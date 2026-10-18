@@ -151,6 +151,7 @@
     <Compile Include="AppPaths.cs" />
     <Compile Include="PdfMerger.cs" />
     <Compile Include="LicenseManager.cs" />
+    <Compile Include="ProcesUTokuProzor.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">

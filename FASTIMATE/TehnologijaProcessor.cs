@@ -115,7 +115,19 @@ namespace FASTIMATE
         private bool Execute(string excelFile, string ident, string korisnik, string datum)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
+            System.Windows.Forms.Form procesBox = ProcesUTokuProzor.Prikazi();
+            try
+            {
+                return ExecuteCore(excelFile, ident, korisnik, datum, stopwatch, procesBox);
+            }
+            finally
+            {
+                ProcesUTokuProzor.Zatvori(procesBox);
+            }
+        }
 
+        private bool ExecuteCore(string excelFile, string ident, string korisnik, string datum, Stopwatch stopwatch, System.Windows.Forms.Form procesBox)
+        {
             try { KFactorManager.LoadData(); } catch { }
 
             IntPtr swHwnd = GetSolidWorksWindow();
@@ -154,6 +166,7 @@ namespace FASTIMATE
                 message += "\n\nNeke pozicije nisu u potpunosti obrađene:\n" + string.Join("\n", warnings.GetRange(0, Math.Min(warnings.Count, 10)));
                 if (warnings.Count > 10) message += $"\n... i još {warnings.Count - 10}";
             }
+            ProcesUTokuProzor.Zatvori(procesBox);
             MessageBox.Show(message, "Uspjeh", MessageBoxButton.OK, warnings.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
             return true;
         }

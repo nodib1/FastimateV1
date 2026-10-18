@@ -41,6 +41,18 @@ namespace FASTIMATE
         private Dictionary<string, string> dictModelMaterial = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, bool> dictModelIsStainless = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
+        // Keš propertyja po modelu – svaki property se iz SolidWorksa čita najviše jednom
+        private readonly Dictionary<object, ModelProps> propsByRef = new Dictionary<object, ModelProps>(new ReferenceComparer());
+        private readonly Dictionary<string, ModelProps> propsByPath = new Dictionary<string, ModelProps>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<object, string> refConfByComp = new Dictionary<object, string>(new ReferenceComparer());
+
+        private readonly Dictionary<KeyValuePair<object, object>, bool> fastenerCache = new Dictionary<KeyValuePair<object, object>, bool>(new PairReferenceComparer());
+
+        private CellBuffer cells;
+        private readonly List<KeyValuePair<int, int>> textFormatCells = new List<KeyValuePair<int, int>>();
+        private ModelView swView;
+        private System.Diagnostics.Stopwatch stopwatch;
+
         public static bool RunProcess(SldWorks activeSwApp, ModelDoc2 activeSwModel, string logovaniKorisnik, string uiIdent = "", string uiPutanja = "")
         {
             try
@@ -57,6 +69,7 @@ namespace FASTIMATE
 
         public bool Execute(SldWorks activeSwApp, ModelDoc2 activeSwModel, string logovaniKorisnik, string uiIdent = "", string uiPutanja = "")
         {
+            stopwatch = System.Diagnostics.Stopwatch.StartNew();
             swApp = activeSwApp;
             if (swApp == null)
             {
@@ -271,6 +284,29 @@ namespace FASTIMATE
                 dictModelMaterial = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 dictModelIsStainless = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
+                // Upisi se skupljaju i šalju u Excel u blokovima (Flush prije preračuna)
+                cells = new CellBuffer(10, 1000);
+                foreach (int col in new[] { 1, 2, 3, 4, 10, 136 }) cells.LoadColumn(excelSheet, col);
+
+                // Ubrzanje API poziva iz vanjske aplikacije
+                try { swApp.CommandInProgress = true; } catch { }
+                try
+                {
+                    swView = swModel.ActiveView as ModelView;
+                    if (swView != null) swView.EnableGraphicsUpdate = false;
+                }
+                catch { swView = null; }
+
+                // Lightweight komponente se razriješe jednim pozivom, umjesto jedna po jedna
+                try
+                {
+                    if (swModel is AssemblyDoc lwAsm && lwAsm.GetLightWeightComponentCount() > 0)
+                    {
+                        lwAsm.ResolveAllLightWeightComponents(false);
+                    }
+                }
+                catch { }
+
                 Configuration swConf = swModel.ConfigurationManager.ActiveConfiguration;
                 Component2 swRootComp = swConf.GetRootComponent3(true);
 
@@ -301,17 +337,17 @@ namespace FASTIMATE
 
                 string mainFinalNameStr = !string.IsNullOrWhiteSpace(gsDodatniStr) ? gsDodatniStr.Trim() : (!string.IsNullOrWhiteSpace(gsNazivStr) ? gsNazivStr.Trim() : mainTitleStr);
 
-                excelSheet.Cells[gpRow, 1].Value = mainFinalNameStr;
-                excelSheet.Cells[gpRow, 2].Value = !string.IsNullOrWhiteSpace(gsIdentStr) ? gsIdentStr : ident;
-                excelSheet.Cells[gpRow, 3].Value = gsNazivStr;
-                excelSheet.Cells[gpRow, 4].Value = 1;
+                SetCell(gpRow, 1, mainFinalNameStr);
+                SetCell(gpRow, 2, !string.IsNullOrWhiteSpace(gsIdentStr) ? gsIdentStr : ident);
+                SetCell(gpRow, 3, gsNazivStr);
+                SetCell(gpRow, 4, 1);
 
                 // Upis konsolidovanih količina u kolonu 4 (D)
                 foreach (var kvp in dictQuantity)
                 {
                     if (dictRowIndex.ContainsKey(kvp.Key))
                     {
-                        excelSheet.Cells[dictRowIndex[kvp.Key], 4].Value = kvp.Value;
+                        SetCell(dictRowIndex[kvp.Key], 4, kvp.Value);
                     }
                 }
 
@@ -343,7 +379,15 @@ namespace FASTIMATE
                     ScanAssemblyChildren(swModel, mainIsStainless, gpRow, mainHasWeld);
                 }
 
-                SanitizeNutAndFastenerColumns(excelSheet, rowIndex + 1);
+                SanitizeNutAndFastenerColumns(rowIndex + 1);
+
+                // Sve prikupljene vrijednosti u Excel odjednom
+                foreach (var tc in textFormatCells)
+                {
+                    try { excelSheet.Cells[tc.Key, tc.Value].NumberFormat = "@"; } catch { }
+                }
+                cells.Flush(excelSheet);
+
                 PostaviValidaciju();
 
                 try { excelApp.Calculate(); } catch { }
@@ -375,7 +419,8 @@ namespace FASTIMATE
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
 
-                MessageBox.Show("Obrada Ponude je uspješno završena.", "Uspjeh", MessageBoxButton.OK, MessageBoxImage.Information);
+                stopwatch.Stop();
+                MessageBox.Show($"Obrada Ponude je uspješno završena.\n\nTrajanje: {stopwatch.Elapsed.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s", "Uspjeh", MessageBoxButton.OK, MessageBoxImage.Information);
                 return true;
             }
             catch (Exception ex)
@@ -394,6 +439,9 @@ namespace FASTIMATE
                     }
                 }
                 catch { }
+
+                try { if (swView != null) swView.EnableGraphicsUpdate = true; } catch { }
+                try { swApp.CommandInProgress = false; } catch { }
 
                 if (swHwnd != IntPtr.Zero)
                 {
@@ -543,11 +591,11 @@ namespace FASTIMATE
             string ucVal = GetCustomPropValue(swPart, null, "GS_Upravljacki_centar");
             if (ucVal?.Trim() == "66")
             {
-                excelSheet.Cells[targetRow, 132].Value = "PMPR";
+                SetCell(targetRow, 132, "PMPR");
             }
             else if (ucVal?.Trim() == "68")
             {
-                excelSheet.Cells[targetRow, 132].Value = "NMPR";
+                SetCell(targetRow, 132, "NMPR");
             }
 
             bool isPart = swPart.GetType() == (int)swDocumentTypes_e.swDocPART;
@@ -649,19 +697,19 @@ namespace FASTIMATE
                     Array.Reverse(d);
 
                     double schaumdichtVal = Math.Round((d[0] * 2) + (d[1] * 2) + d[2], 3);
-                    excelSheet.Cells[targetRow, 107].Value = schaumdichtVal;
+                    SetCell(targetRow, 107, schaumdichtVal);
                 }
             }
 
             // Upis u Excel
-            excelSheet.Cells[targetRow, 1].Value = finalName;
-            excelSheet.Cells[targetRow, 2].Value = gsIdent;
-            excelSheet.Cells[targetRow, 3].Value = gsNaziv;
-            excelSheet.Cells[targetRow, 5].Value = thickness > 0 ? thickness.ToString("0.00") : "0,00";
-            excelSheet.Cells[targetRow, 6].Value = flattenLength;
-            excelSheet.Cells[targetRow, 7].Value = flattenWidth;
-            excelSheet.Cells[targetRow, 67].Value = isSheetMetal ? bendEval : "";
-            excelSheet.Cells[targetRow, 134].Value = materialForExcel;
+            SetCell(targetRow, 1, finalName);
+            SetCell(targetRow, 2, gsIdent);
+            SetCell(targetRow, 3, gsNaziv);
+            SetCell(targetRow, 5, thickness > 0 ? thickness.ToString("0.00") : "0,00");
+            SetCell(targetRow, 6, flattenLength);
+            SetCell(targetRow, 7, flattenWidth);
+            SetCell(targetRow, 67, isSheetMetal ? bendEval : "");
+            SetCell(targetRow, 134, materialForExcel);
 
             if (isPart && (isSheetMetal || thickness > 0 || !string.IsNullOrWhiteSpace(bendEval) || kFactorVal > 0 || !string.IsNullOrWhiteSpace(kFactorStr)))
             {
@@ -685,16 +733,16 @@ namespace FASTIMATE
                 {
                     if (double.TryParse(valToWrite, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedVal))
                     {
-                        excelSheet.Cells[targetRow, 138].Value = parsedVal;
+                        SetCell(targetRow, 138, parsedVal);
                     }
                     else if (double.TryParse(valToWrite.Replace('.', ','), System.Globalization.NumberStyles.Any, new System.Globalization.CultureInfo("hr-BA"), out double parsedVal2))
                     {
-                        excelSheet.Cells[targetRow, 138].Value = parsedVal2;
+                        SetCell(targetRow, 138, parsedVal2);
                     }
                     else
                     {
-                        excelSheet.Cells[targetRow, 138].NumberFormat = "@";
-                        excelSheet.Cells[targetRow, 138].Value = valToWrite;
+                        textFormatCells.Add(new KeyValuePair<int, int>(targetRow, 138));
+                        SetCell(targetRow, 138, valToWrite);
                     }
                 }
             }
@@ -718,31 +766,31 @@ namespace FASTIMATE
             {
                 if (double.TryParse(trimmedFinish.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double dFinish))
                 {
-                    excelSheet.Cells[targetRow, 10].Value = dFinish;
+                    SetCell(targetRow, 10, dFinish);
                 }
                 else
                 {
-                    excelSheet.Cells[targetRow, 10].Value = trimmedFinish;
+                    SetCell(targetRow, 10, trimmedFinish);
                 }
             }
             else
             {
-                excelSheet.Cells[targetRow, 10].Value = null;
+                SetCell(targetRow, 10, null);
             }
 
             if (!string.IsNullOrWhiteSpace(trimmedPz))
             {
-                excelSheet.Cells[targetRow, 136].Value = trimmedPz;
+                SetCell(targetRow, 136, trimmedPz);
             }
             else
             {
-                excelSheet.Cells[targetRow, 136].Value = null;
+                SetCell(targetRow, 136, null);
             }
 
             if (isPart)
             {
-                if (tCount > 0) excelSheet.Cells[targetRow, 53].Value = tCount;
-                if (cskCount > 0) excelSheet.Cells[targetRow, 58].Value = cskCount;
+                if (tCount > 0) SetCell(targetRow, 53, tCount);
+                if (cskCount > 0) SetCell(targetRow, 58, cskCount);
             }
 
             bool hasWeld = false;
@@ -967,20 +1015,11 @@ namespace FASTIMATE
 
                                 if (kFactorVal == 0 || thickness == 0)
                                 {
-                                    object pNamesObj = null, pTypesObj = null, pValOutObj = null, pResValOutObj = null, pPropLinkObj = null;
-                                    propMgr.GetAll3(ref pNamesObj, ref pTypesObj, ref pValOutObj, ref pResValOutObj, ref pPropLinkObj);
-                                    if (pNamesObj is Array propNames && pResValOutObj is Array propResVals)
                                     {
-                                        for (int p = 0; p < propNames.Length; p++)
+                                        foreach (var prop in ReadMatchingProps(propMgr, IsThicknessOrKPropName))
                                         {
-                                            string pName = Convert.ToString(propNames.GetValue(p))?.Trim() ?? "";
-                                            string pVal = Convert.ToString(propResVals.GetValue(p))?.Trim() ?? "";
-                                            if (string.IsNullOrWhiteSpace(pVal) && pValOutObj is Array propVals)
-                                            {
-                                                pVal = Convert.ToString(propVals.GetValue(p))?.Trim() ?? "";
-                                            }
-
-                                            string pNameLower = pName.ToLower();
+                                            string pVal = prop.Value;
+                                            string pNameLower = prop.Key.ToLower();
 
                                             if (thickness == 0 && (pNameLower.Contains("thick") || pNameLower.Contains("debljin")))
                                             {
@@ -1101,95 +1140,75 @@ namespace FASTIMATE
 
             if (kFactorVal == 0 || thickness == 0)
             {
+                ModelProps partProps = GetModelProps(swPart);
                 List<string> confNames = new List<string>();
-                try
-                {
-                    if (swPart.ConfigurationManager?.ActiveConfiguration != null)
-                    {
-                        string actName = swPart.ConfigurationManager.ActiveConfiguration.Name;
-                        if (!string.IsNullOrWhiteSpace(actName)) confNames.Add(actName);
-                    }
-                }
-                catch { }
+                string actName = partProps.ActiveConfiguration;
+                if (!string.IsNullOrWhiteSpace(actName)) confNames.Add(actName);
                 confNames.Add(""); // Global document properties
+
+                string[] kPropNames = new string[] {
+                    "K-Factor", "Bend Allowance", "K Factor", "K_Faktor", "KFactor",
+                    "Bend Allowance Standard", "Bend Deduction", "Dodatak za savijanje", "Bend_Allowance"
+                };
 
                 foreach (string cName in confNames)
                 {
                     if (kFactorVal > 0 && thickness > 0) break;
                     try
                     {
-                        CustomPropertyManager partCustPropMgr = swPart.Extension.get_CustomPropertyManager(cName);
-                        if (partCustPropMgr != null)
+                        PropReader reader = partProps.Reader(cName);
+
+                        // 1. Direktno po imenu (keširano)
+                        if (kFactorVal == 0)
                         {
-                            // 1. Direct Get4 check
-                            if (kFactorVal == 0)
+                            foreach (string kpn in kPropNames)
                             {
-                                string[] kPropNames = new string[] {
-                                    "K-Factor", "Bend Allowance", "K Factor", "K_Faktor", "KFactor",
-                                    "Bend Allowance Standard", "Bend Deduction", "Dodatak za savijanje", "Bend_Allowance"
-                                };
-                                foreach (string kpn in kPropNames)
+                                string res = reader.Get(kpn);
+                                if (!string.IsNullOrWhiteSpace(res))
                                 {
-                                    string v1 = "", v2 = "";
-                                    partCustPropMgr.Get4(kpn, true, out v1, out v2);
-                                    string res = !string.IsNullOrWhiteSpace(v2) ? v2 : v1;
-                                    if (!string.IsNullOrWhiteSpace(res))
+                                    string cleaned = res.ToLower().Replace("mm", "").Trim().Replace(',', '.');
+                                    if (double.TryParse(cleaned, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedK) && parsedK > 0)
                                     {
-                                        string cleaned = res.ToLower().Replace("mm", "").Trim().Replace(',', '.');
-                                        if (double.TryParse(cleaned, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedK) && parsedK > 0)
-                                        {
-                                            kFactorVal = Math.Round(parsedK, 4);
-                                            kFactorStr = kFactorVal.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
-                                            break;
-                                        }
-                                        else if (string.IsNullOrWhiteSpace(kFactorStr) && !cleaned.Equals("0") && !cleaned.Equals("0.00") && !cleaned.Equals("0,00"))
-                                        {
-                                            kFactorStr = res.Trim();
-                                        }
+                                        kFactorVal = Math.Round(parsedK, 4);
+                                        kFactorStr = kFactorVal.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+                                        break;
+                                    }
+                                    else if (string.IsNullOrWhiteSpace(kFactorStr) && !cleaned.Equals("0") && !cleaned.Equals("0.00") && !cleaned.Equals("0,00"))
+                                    {
+                                        kFactorStr = res.Trim();
                                     }
                                 }
                             }
+                        }
 
-                            // 2. GetAll3 check
-                            if (kFactorVal == 0 || thickness == 0)
+                        // 2. Pretraga po dijelu imena (debljina / K-faktor) – vrijednosti iz Get4, ne statusni kodovi
+                        if (kFactorVal == 0 || thickness == 0)
+                        {
+                            foreach (var prop in reader.Matching(IsThicknessOrKPropName))
                             {
-                                object pNamesObj = null, pTypesObj = null, pValOutObj = null, pResValOutObj = null, pPropLinkObj = null;
-                                partCustPropMgr.GetAll3(ref pNamesObj, ref pTypesObj, ref pValOutObj, ref pResValOutObj, ref pPropLinkObj);
-                                if (pNamesObj is Array propNames && pResValOutObj is Array propResVals)
+                                string pVal = prop.Value.Trim();
+                                string pNameLower = prop.Key.ToLower();
+
+                                if (thickness == 0 && (pNameLower.Contains("thick") || pNameLower.Contains("debljin")))
                                 {
-                                    for (int p = 0; p < propNames.Length; p++)
+                                    string thStr = pVal.ToLower().Replace("mm", "").Trim().Replace(',', '.');
+                                    if (double.TryParse(thStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedTh) && parsedTh > 0)
                                     {
-                                        string pName = Convert.ToString(propNames.GetValue(p))?.Trim() ?? "";
-                                        string pVal = Convert.ToString(propResVals.GetValue(p))?.Trim() ?? "";
-                                        if (string.IsNullOrWhiteSpace(pVal) && pValOutObj is Array propVals)
-                                        {
-                                            pVal = Convert.ToString(propVals.GetValue(p))?.Trim() ?? "";
-                                        }
+                                        thickness = parsedTh;
+                                    }
+                                }
 
-                                        string pNameLower = pName.ToLower();
-
-                                        if (thickness == 0 && (pNameLower.Contains("thick") || pNameLower.Contains("debljin")))
-                                        {
-                                            string thStr = pVal.ToLower().Replace("mm", "").Trim().Replace(',', '.');
-                                            if (double.TryParse(thStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedTh) && parsedTh > 0)
-                                            {
-                                                thickness = parsedTh;
-                                            }
-                                        }
-
-                                        if (kFactorVal == 0 && (pNameLower.Contains("k-factor") || pNameLower.Contains("k factor") || pNameLower.Contains("k_faktor") || pNameLower.Contains("kfactor") || pNameLower.Contains("bend allowance") || pNameLower.Contains("bendallowance") || pNameLower.Contains("bend deduction") || pNameLower.Contains("dodatak za savijanje")))
-                                        {
-                                            string kStr = pVal.ToLower().Replace("mm", "").Trim().Replace(',', '.');
-                                            if (double.TryParse(kStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedK) && parsedK > 0)
-                                            {
-                                                kFactorVal = Math.Round(parsedK, 4);
-                                                kFactorStr = kFactorVal.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
-                                            }
-                                            else if (string.IsNullOrWhiteSpace(kFactorStr) && !kStr.Equals("0") && !kStr.Equals("0.00") && !kStr.Equals("0,00"))
-                                            {
-                                                kFactorStr = pVal.Trim();
-                                            }
-                                        }
+                                if (kFactorVal == 0 && (pNameLower.Contains("k-factor") || pNameLower.Contains("k factor") || pNameLower.Contains("k_faktor") || pNameLower.Contains("kfactor") || pNameLower.Contains("bend allowance") || pNameLower.Contains("bendallowance") || pNameLower.Contains("bend deduction") || pNameLower.Contains("dodatak za savijanje")))
+                                {
+                                    string kStr = pVal.ToLower().Replace("mm", "").Trim().Replace(',', '.');
+                                    if (double.TryParse(kStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedK) && parsedK > 0)
+                                    {
+                                        kFactorVal = Math.Round(parsedK, 4);
+                                        kFactorStr = kFactorVal.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+                                    }
+                                    else if (string.IsNullOrWhiteSpace(kFactorStr) && !kStr.Equals("0") && !kStr.Equals("0.00") && !kStr.Equals("0,00"))
+                                    {
+                                        kFactorStr = pVal.Trim();
                                     }
                                 }
                             }
@@ -1214,20 +1233,20 @@ namespace FASTIMATE
 
             switch (thickRounded)
             {
-                case 1: excelSheet.Cells[targetRow, 17].Value = finalPerimeter; break;
-                case 2: excelSheet.Cells[targetRow, 23].Value = finalPerimeter; break;
-                case 3: excelSheet.Cells[targetRow, 26].Value = finalPerimeter; break;
-                case 4: excelSheet.Cells[targetRow, 29].Value = finalPerimeter; break;
-                case 5: excelSheet.Cells[targetRow, 35].Value = finalPerimeter; break;
-                case 8: excelSheet.Cells[targetRow, 38].Value = finalPerimeter; break;
-                case 10: excelSheet.Cells[targetRow, 41].Value = finalPerimeter; break;
-                case 12: excelSheet.Cells[targetRow, 44].Value = finalPerimeter; break;
-                case 15: excelSheet.Cells[targetRow, 47].Value = finalPerimeter; break;
-                case 20: excelSheet.Cells[targetRow, 50].Value = finalPerimeter; break;
+                case 1: SetCell(targetRow, 17, finalPerimeter); break;
+                case 2: SetCell(targetRow, 23, finalPerimeter); break;
+                case 3: SetCell(targetRow, 26, finalPerimeter); break;
+                case 4: SetCell(targetRow, 29, finalPerimeter); break;
+                case 5: SetCell(targetRow, 35, finalPerimeter); break;
+                case 8: SetCell(targetRow, 38, finalPerimeter); break;
+                case 10: SetCell(targetRow, 41, finalPerimeter); break;
+                case 12: SetCell(targetRow, 44, finalPerimeter); break;
+                case 15: SetCell(targetRow, 47, finalPerimeter); break;
+                case 20: SetCell(targetRow, 50, finalPerimeter); break;
                 default:
                     if (Math.Abs(thickness - 1.5) < 0.1)
                     {
-                        excelSheet.Cells[targetRow, 20].Value = finalPerimeter;
+                        SetCell(targetRow, 20, finalPerimeter);
                     }
                     break;
             }
@@ -1309,9 +1328,9 @@ namespace FASTIMATE
                     }
                 }
 
-                excelSheet.Cells[gpRow, 120].Value = mainChildCount > 0 ? mainChildCount : 1;
-                if (areaM2 > 0) excelSheet.Cells[gpRow, 121].Value = Math.Round(areaM2, 4);
-                if (volM3 > 0) excelSheet.Cells[gpRow, 124].Value = Math.Round(volM3, 6);
+                SetCell(gpRow, 120, mainChildCount > 0 ? mainChildCount : 1);
+                if (areaM2 > 0) SetCell(gpRow, 121, Math.Round(areaM2, 4));
+                if (volM3 > 0) SetCell(gpRow, 124, Math.Round(volM3, 6));
             }
             catch { }
         }
@@ -1378,19 +1397,19 @@ namespace FASTIMATE
                 double rezRound = Math.Round(rezultat, 2);
                 if (isStainless)
                 {
-                    excelSheet.Cells[targetRow, 87].Value2 = rezRound;
-                    excelSheet.Cells[targetRow, 74].Value2 = null;
+                    SetCell(targetRow, 87, rezRound);
+                    SetCell(targetRow, 74, null);
                 }
                 else
                 {
-                    excelSheet.Cells[targetRow, 74].Value2 = rezRound;
-                    excelSheet.Cells[targetRow, 87].Value2 = null;
+                    SetCell(targetRow, 74, rezRound);
+                    SetCell(targetRow, 87, null);
                 }
             }
             else
             {
-                excelSheet.Cells[targetRow, 87].Value2 = null;
-                excelSheet.Cells[targetRow, 74].Value2 = null;
+                SetCell(targetRow, 87, null);
+                SetCell(targetRow, 74, null);
             }
 
             return rezultat;
@@ -1477,15 +1496,15 @@ namespace FASTIMATE
                 }
             }
 
-            if (vCount > 0) excelSheet.Cells[targetRow, 114].Value = vCount;
-            if (pCount > 0) excelSheet.Cells[targetRow, 64].Value = pCount; // Uprešavanje je Kolona 64 (BL)
+            if (vCount > 0) SetCell(targetRow, 114, vCount);
+            if (pCount > 0) SetCell(targetRow, 64, pCount); // Uprešavanje je Kolona 64 (BL)
             if (mCount > 0)
             {
-                excelSheet.Cells[targetRow, 115].Value = mCount; // Montaža matice je Kolona 115 (DK)
+                SetCell(targetRow, 115, mCount); // Montaža matice je Kolona 115 (DK)
             }
             else
             {
-                excelSheet.Cells[targetRow, 115].Value = null;
+                SetCell(targetRow, 115, null);
             }
 
             if (hasWeld)
@@ -1493,42 +1512,40 @@ namespace FASTIMATE
                 long weldPrepCount = wCount > 1 ? (wCount - 1) : 1;
                 if (isStainless)
                 {
-                    excelSheet.Cells[targetRow, 86].Value = weldPrepCount;
-                    excelSheet.Cells[targetRow, 73].Value = null;
+                    SetCell(targetRow, 86, weldPrepCount);
+                    SetCell(targetRow, 73, null);
                 }
                 else
                 {
-                    excelSheet.Cells[targetRow, 73].Value = weldPrepCount;
-                    excelSheet.Cells[targetRow, 86].Value = null;
+                    SetCell(targetRow, 73, weldPrepCount);
+                    SetCell(targetRow, 86, null);
                 }
             }
             else
             {
-                excelSheet.Cells[targetRow, 86].Value = null;
-                excelSheet.Cells[targetRow, 73].Value = null;
+                SetCell(targetRow, 86, null);
+                SetCell(targetRow, 73, null);
             }
 
-            if (pCelik > 0) excelSheet.Cells[targetRow, 70].Value = pCelik;
-            if (pInox > 0) excelSheet.Cells[targetRow, 83].Value = pInox;
+            if (pCelik > 0) SetCell(targetRow, 70, pCelik);
+            if (pInox > 0) SetCell(targetRow, 83, pInox);
         }
 
-        public void SanitizeNutAndFastenerColumns(dynamic sheet, int lastRow)
+        /// <summary>Radi nad baferom (prije slanja u Excel) – isti postupak kao ranije, bez poziva Excelu po ćeliji.</summary>
+        private void SanitizeNutAndFastenerColumns(int lastRow)
         {
-            if (sheet == null) return;
             try
             {
-                dynamic rawData = sheet.Range[$"A10:C{Math.Max(lastRow, 15)}"].Value2;
-                if (rawData is object[,] dataArr)
                 {
-                    int maxR = dataArr.GetLength(0);
+                    int maxR = Math.Max(lastRow, 15) - 10 + 1;
                     int emptyCount = 0;
 
                     for (int r = 1; r <= maxR; r++)
                     {
                         int actualRow = r + 9;
-                        string pName = Convert.ToString(dataArr[r, 1])?.Trim() ?? "";
-                        string pIdent = Convert.ToString(dataArr[r, 2])?.Trim() ?? "";
-                        string pDesc = Convert.ToString(dataArr[r, 3])?.Trim() ?? "";
+                        string pName = Convert.ToString(cells.Get(actualRow, 1))?.Trim() ?? "";
+                        string pIdent = Convert.ToString(cells.Get(actualRow, 2))?.Trim() ?? "";
+                        string pDesc = Convert.ToString(cells.Get(actualRow, 3))?.Trim() ?? "";
 
                         if (string.IsNullOrWhiteSpace(pName) && string.IsNullOrWhiteSpace(pIdent) && string.IsNullOrWhiteSpace(pDesc))
                         {
@@ -1545,38 +1562,38 @@ namespace FASTIMATE
                             string newColA = !string.IsNullOrWhiteSpace(pDesc) ? pDesc : (!string.IsNullOrWhiteSpace(pIdent) ? pIdent : "");
                             if (!string.IsNullOrWhiteSpace(newColA))
                             {
-                                sheet.Cells[actualRow, 1].Value = newColA;
+                                cells.Set(actualRow, 1, newColA);
                                 pName = newColA;
                             }
                         }
 
                         // Sanitacija polja Površinska zaštita (Kolona 136 / EJ) i Finish (Kolona 10 / J)
-                        object pzVal = sheet.Cells[actualRow, 136].Value;
+                        object pzVal = cells.Get(actualRow, 136);
                         string pzStr = Convert.ToString(pzVal)?.Trim() ?? "";
                         if (pzStr == "-" || pzStr == "--")
                         {
                             pzStr = "";
-                            sheet.Cells[actualRow, 136].Value = null;
+                            cells.Set(actualRow, 136, null);
                         }
 
-                        object finishVal = sheet.Cells[actualRow, 10].Value;
+                        object finishVal = cells.Get(actualRow, 10);
                         string fStr = Convert.ToString(finishVal)?.Trim() ?? "";
                         if (fStr == "-" || fStr == "--")
                         {
                             fStr = "";
-                            sheet.Cells[actualRow, 10].Value = null;
+                            cells.Set(actualRow, 10, null);
                         }
 
                         // Ako Površinska zaštita ne postoji ili je "-" ili "--", Finish u Koloni 10 ne smije postojati
                         if (string.IsNullOrWhiteSpace(pzStr))
                         {
-                            sheet.Cells[actualRow, 10].Value = null;
+                            cells.Set(actualRow, 10, null);
                         }
 
                         string checkStr = $"{pIdent} {pName} {pDesc}".ToLower();
 
                         int qty = 1;
-                        object qtyVal = sheet.Cells[actualRow, 4].Value;
+                        object qtyVal = cells.Get(actualRow, 4);
                         if (qtyVal != null && int.TryParse(Convert.ToString(qtyVal), out int parsedQty) && parsedQty > 0)
                         {
                             qty = parsedQty;
@@ -1584,22 +1601,22 @@ namespace FASTIMATE
 
                         if (IsPressFitNutOrFastener(checkStr))
                         {
-                            sheet.Cells[actualRow, 64].Value = qty;
-                            sheet.Cells[actualRow, 115].Value = null;
+                            cells.Set(actualRow, 64, qty);
+                            cells.Set(actualRow, 115, null);
                             if (!checkStr.Contains("vijak"))
                             {
-                                sheet.Cells[actualRow, 114].Value = null;
+                                cells.Set(actualRow, 114, null);
                             }
                         }
                         else if (IsAssemblyNut(checkStr))
                         {
-                            sheet.Cells[actualRow, 115].Value = qty;
-                            sheet.Cells[actualRow, 64].Value = null;
+                            cells.Set(actualRow, 115, qty);
+                            cells.Set(actualRow, 64, null);
                         }
                         else
                         {
-                            sheet.Cells[actualRow, 64].Value = null;
-                            sheet.Cells[actualRow, 115].Value = null;
+                            cells.Set(actualRow, 64, null);
+                            cells.Set(actualRow, 115, null);
                         }
                     }
                 }
@@ -1717,6 +1734,18 @@ namespace FASTIMATE
         {
             if (comp == null && model == null) return false;
 
+            // Rezultat zavisi samo od komponente i modela – pamti se da se ne računa ponovo
+            object modelKey = model != null ? (object)GetModelProps(model) : null;
+            var cacheKey = new KeyValuePair<object, object>(modelKey, comp);
+            if (fastenerCache.TryGetValue(cacheKey, out bool cachedResult)) return cachedResult;
+
+            bool result = IsFastenerComponentUncached(comp, model);
+            fastenerCache[cacheKey] = result;
+            return result;
+        }
+
+        private bool IsFastenerComponentUncached(Component2 comp, ModelDoc2 model)
+        {
 
             string cName = comp?.Name2 ?? "";
             string path = "";
@@ -2272,14 +2301,26 @@ namespace FASTIMATE
 
                 List<PonudaPartInfo> sheetRowsData = new List<PonudaPartInfo>();
 
+                // Kolone A:H i ED se čitaju jednim pozivom (nakon preračuna formula)
+                object[,] blockAH = excelSheet.Range[$"A10:H{Math.Max(lastRow - 1, 11)}"].Value as object[,];
+                object[,] blockED = excelSheet.Range[$"ED10:ED{Math.Max(lastRow - 1, 11)}"].Value as object[,];
+                object Cell(int row, int col)
+                {
+                    object[,] block = col == 134 ? blockED : blockAH;
+                    if (block == null) return null;
+                    int i = block.GetLowerBound(0) + (row - 10);
+                    int j = block.GetLowerBound(1) + (col == 134 ? 0 : col - 1);
+                    return i <= block.GetUpperBound(0) ? block[i, j] : null;
+                }
+
                 for (int r = 10; r < lastRow; r++)
                 {
                     try
                     {
-                        string partName = Convert.ToString(excelSheet.Cells[r, 1].Value)?.Trim() ?? "";
-                        string matStr = Convert.ToString(excelSheet.Cells[r, 134].Value)?.Trim() ?? "";
+                        string partName = Convert.ToString(Cell(r, 1))?.Trim() ?? "";
+                        string matStr = Convert.ToString(Cell(r, 134))?.Trim() ?? "";
 
-                        object qObj = excelSheet.Cells[r, 4].Value;
+                        object qObj = Cell(r, 4);
                         int qty = 1;
                         if (qObj != null)
                         {
@@ -2288,7 +2329,7 @@ namespace FASTIMATE
                             else if (int.TryParse(Convert.ToString(qObj), out int parsedQ)) qty = parsedQ;
                         }
 
-                        object thObj = excelSheet.Cells[r, 5].Value;
+                        object thObj = Cell(r, 5);
                         double thickness = 0.0;
                         if (thObj != null)
                         {
@@ -2296,7 +2337,7 @@ namespace FASTIMATE
                             else if (double.TryParse(Convert.ToString(thObj).Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedTh)) thickness = parsedTh;
                         }
 
-                        object mObj = excelSheet.Cells[r, 8].Value;
+                        object mObj = Cell(r, 8);
                         double massSingle = 0.0;
                         if (mObj != null)
                         {
@@ -2308,8 +2349,8 @@ namespace FASTIMATE
                         {
                             try
                             {
-                                object fObj = excelSheet.Cells[r, 6].Value;
-                                object gObj = excelSheet.Cells[r, 7].Value;
+                                object fObj = Cell(r, 6);
+                                object gObj = Cell(r, 7);
                                 double l = 0, w = 0;
                                 double.TryParse(Convert.ToString(fObj)?.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out l);
                                 double.TryParse(Convert.ToString(gObj)?.Replace(',', '.'), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out w);
@@ -2359,7 +2400,7 @@ namespace FASTIMATE
                             int qty = 1;
                             try
                             {
-                                string qValStr = Convert.ToString(excelSheet.Cells[rIndex, 4].Value);
+                                string qValStr = Convert.ToString(Cell(rIndex, 4));
                                 if (int.TryParse(qValStr, out int parsedQty)) qty = parsedQty;
                             }
                             catch { }
@@ -2474,54 +2515,320 @@ namespace FASTIMATE
             return m;
         }
 
+        /// <summary>
+        /// Property redoslijedom: referencirana konfiguracija komponente, aktivna konfiguracija, globalno.
+        /// Vrijednosti se keširaju po modelu, pa se isti property iz SolidWorksa čita samo jednom.
+        /// </summary>
         private string GetCustomPropValue(ModelDoc2 model, Component2 comp, string propName)
         {
-            if (model == null && comp == null) return "";
+            if (model == null) return "";
 
-            string valOut = "", resValOut = "";
+            ModelProps props = GetModelProps(model);
 
-            List<string> confsToTry = new List<string>();
-            if (comp != null && !string.IsNullOrWhiteSpace(comp.ReferencedConfiguration))
+            List<string> confsToTry = new List<string>(2);
+            if (comp != null)
             {
-                confsToTry.Add(comp.ReferencedConfiguration);
+                string refConf = GetReferencedConfiguration(comp);
+                if (!string.IsNullOrWhiteSpace(refConf)) confsToTry.Add(refConf);
             }
-            if (model != null && model.ConfigurationManager != null && model.ConfigurationManager.ActiveConfiguration != null)
+            string activeConf = props.ActiveConfiguration;
+            if (activeConf != null && !confsToTry.Contains(activeConf)) confsToTry.Add(activeConf);
+
+            foreach (string confName in confsToTry)
             {
-                string activeConf = model.ConfigurationManager.ActiveConfiguration.Name;
-                if (!confsToTry.Contains(activeConf)) confsToTry.Add(activeConf);
+                string res = props.Reader(confName).Get(propName);
+                if (!string.IsNullOrWhiteSpace(res)) return res;
             }
 
-            if (model != null)
+            string global = props.Reader("").Get(propName);
+            return !string.IsNullOrWhiteSpace(global) ? global : "";
+        }
+
+        private ModelProps GetModelProps(ModelDoc2 model)
+        {
+            if (propsByRef.TryGetValue(model, out ModelProps props)) return props;
+
+            string path = "";
+            try { path = model.GetPathName() ?? ""; } catch { }
+            if (string.IsNullOrEmpty(path) || !propsByPath.TryGetValue(path, out props))
             {
-                foreach (string confName in confsToTry)
+                props = new ModelProps(model);
+                if (!string.IsNullOrEmpty(path)) propsByPath[path] = props;
+            }
+            propsByRef[model] = props;
+            return props;
+        }
+
+        private string GetReferencedConfiguration(Component2 comp)
+        {
+            if (refConfByComp.TryGetValue(comp, out string conf)) return conf;
+            try { conf = comp.ReferencedConfiguration ?? ""; } catch { conf = ""; }
+            refConfByComp[comp] = conf;
+            return conf;
+        }
+
+        private void SetCell(int row, int col, object value)
+        {
+            cells.Set(row, col, value);
+        }
+
+        /// <summary>
+        /// Vrijednosti propertyja čija imena odgovaraju filteru.
+        /// GetAll3 daje samo imena (njegov "Resolved" niz su statusni kodovi, ne vrijednosti) – vrijednost se čita sa Get4.
+        /// </summary>
+        private static List<KeyValuePair<string, string>> ReadMatchingProps(CustomPropertyManager mgr, Func<string, bool> nameFilter)
+        {
+            List<KeyValuePair<string, string>> result = new List<KeyValuePair<string, string>>();
+            if (mgr == null) return result;
+
+            object names = null, types = null, values = null, resolved = null, links = null;
+            mgr.GetAll3(ref names, ref types, ref values, ref resolved, ref links);
+            if (!(names is Array nameArr)) return result;
+
+            foreach (object n in nameArr)
+            {
+                string name = Convert.ToString(n) ?? "";
+                if (string.IsNullOrWhiteSpace(name) || !nameFilter(name.Trim().ToLower())) continue;
+
+                mgr.Get4(name, true, out string raw, out string res);
+                string val = (!string.IsNullOrWhiteSpace(res) ? res : raw)?.Trim() ?? "";
+                result.Add(new KeyValuePair<string, string>(name.Trim(), val));
+            }
+            return result;
+        }
+
+        private static bool IsThicknessOrKPropName(string nameLower)
+        {
+            return nameLower.Contains("thick") || nameLower.Contains("debljin") ||
+                   nameLower.Contains("k-factor") || nameLower.Contains("k factor") || nameLower.Contains("k_faktor") || nameLower.Contains("kfactor") ||
+                   nameLower.Contains("bend allowance") || nameLower.Contains("bendallowance") || nameLower.Contains("bend deduction") || nameLower.Contains("dodatak za savijanje");
+        }
+
+        private class PairReferenceComparer : IEqualityComparer<KeyValuePair<object, object>>
+        {
+            public bool Equals(KeyValuePair<object, object> x, KeyValuePair<object, object> y)
+            {
+                return ReferenceEquals(x.Key, y.Key) && ReferenceEquals(x.Value, y.Value);
+            }
+
+            public int GetHashCode(KeyValuePair<object, object> obj)
+            {
+                int h1 = obj.Key == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.Key);
+                int h2 = obj.Value == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.Value);
+                return unchecked(h1 * 397 ^ h2);
+            }
+        }
+
+        private class ReferenceComparer : IEqualityComparer<object>
+        {
+            public new bool Equals(object x, object y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(object obj) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj); }
+        }
+
+        /// <summary>Keširani propertyji jednog modela (po konfiguraciji).</summary>
+        private class ModelProps
+        {
+            private readonly ModelDoc2 model;
+            private readonly Dictionary<string, PropReader> readers = new Dictionary<string, PropReader>(StringComparer.Ordinal);
+            private bool activeLoaded;
+            private string activeConf;
+
+            public ModelProps(ModelDoc2 model) { this.model = model; }
+
+            public string ActiveConfiguration
+            {
+                get
                 {
-                    try
+                    if (!activeLoaded)
                     {
-                        var confProp = model.Extension.get_CustomPropertyManager(confName);
-                        if (confProp != null)
-                        {
-                            confProp.Get4(propName, true, out valOut, out resValOut);
-                            string res = !string.IsNullOrWhiteSpace(resValOut) ? resValOut : valOut;
-                            if (!string.IsNullOrWhiteSpace(res)) return res;
-                        }
+                        activeLoaded = true;
+                        try { activeConf = model.ConfigurationManager?.ActiveConfiguration?.Name; } catch { activeConf = null; }
                     }
-                    catch { }
+                    return activeConf;
                 }
+            }
 
+            public PropReader Reader(string conf)
+            {
+                conf = conf ?? "";
+                if (!readers.TryGetValue(conf, out PropReader reader))
+                {
+                    CustomPropertyManager mgr = null;
+                    try { mgr = model.Extension.get_CustomPropertyManager(conf); } catch { }
+                    reader = new PropReader(mgr);
+                    readers[conf] = reader;
+                }
+                return reader;
+            }
+        }
+
+        /// <summary>
+        /// Propertyji jednog CustomPropertyManager-a. GetAll3 (jednom) daje spisak imena,
+        /// pa se Get4 poziva samo za propertyje koji postoje; rezultat se kešira.
+        /// </summary>
+        private class PropReader
+        {
+            private readonly CustomPropertyManager mgr;
+            private Dictionary<string, string> exactNames;
+            private readonly List<string> nameOrder = new List<string>();
+            private readonly Dictionary<string, string> cache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            public PropReader(CustomPropertyManager mgr) { this.mgr = mgr; }
+
+            /// <summary>Izračunata vrijednost (ili unesena ako je izračunata prazna) – kao Get4 u starom kodu.</summary>
+            public string Get(string name)
+            {
+                if (mgr == null || string.IsNullOrEmpty(name)) return "";
+                if (cache.TryGetValue(name, out string cached)) return cached;
+
+                string result = "";
                 try
                 {
-                    var globalProp = model.Extension.get_CustomPropertyManager("");
-                    if (globalProp != null)
+                    LoadNames();
+                    if (exactNames.TryGetValue(name.Trim(), out string realName))
                     {
-                        globalProp.Get4(propName, true, out valOut, out resValOut);
-                        string res = !string.IsNullOrWhiteSpace(resValOut) ? resValOut : valOut;
-                        if (!string.IsNullOrWhiteSpace(res)) return res;
+                        mgr.Get4(realName, true, out string raw, out string res);
+                        result = !string.IsNullOrWhiteSpace(res) ? res : (raw ?? "");
                     }
                 }
                 catch { }
+                cache[name] = result;
+                return result;
             }
 
-            return "";
+            /// <summary>Propertyji čije ime (malim slovima) prolazi filter, redoslijedom kao u SolidWorksu.</summary>
+            public List<KeyValuePair<string, string>> Matching(Func<string, bool> nameFilter)
+            {
+                List<KeyValuePair<string, string>> result = new List<KeyValuePair<string, string>>();
+                if (mgr == null) return result;
+                try { LoadNames(); } catch { return result; }
+                foreach (string name in nameOrder)
+                {
+                    if (nameFilter(name.ToLower())) result.Add(new KeyValuePair<string, string>(name, Get(name)));
+                }
+                return result;
+            }
+
+            private void LoadNames()
+            {
+                if (exactNames != null) return;
+                exactNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                object names = null, types = null, values = null, resolved = null, links = null;
+                mgr.GetAll3(ref names, ref types, ref values, ref resolved, ref links);
+                if (names is Array arr)
+                {
+                    foreach (object n in arr)
+                    {
+                        string name = Convert.ToString(n);
+                        if (!string.IsNullOrWhiteSpace(name) && !exactNames.ContainsKey(name.Trim()))
+                        {
+                            exactNames[name.Trim()] = name;
+                            nameOrder.Add(name.Trim());
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Skuplja upise i šalje ih u Excel odjednom: susjedne ćelije u koloni idu jednim pozivom.
+        /// Upisuju se samo ćelije koje je obrada postavila – formule u ostalim ćelijama ostaju netaknute.
+        /// </summary>
+        private class CellBuffer
+        {
+            private readonly int firstRow;
+            private readonly int lastRow;
+            private readonly Dictionary<int, object[]> original = new Dictionary<int, object[]>();
+            private readonly Dictionary<int, SortedDictionary<int, object>> pending = new Dictionary<int, SortedDictionary<int, object>>();
+
+            public CellBuffer(int firstRow, int lastRow)
+            {
+                this.firstRow = firstRow;
+                this.lastRow = lastRow;
+            }
+
+            public void LoadColumn(dynamic sheet, int col)
+            {
+                object[] values = new object[lastRow - firstRow + 1];
+                try
+                {
+                    string letter = ColumnLetter(col);
+                    object raw = sheet.Range[$"{letter}{firstRow}:{letter}{lastRow}"].Value;
+                    if (raw is object[,] arr)
+                    {
+                        int lower = arr.GetLowerBound(0);
+                        for (int i = 0; i < values.Length && i + lower <= arr.GetUpperBound(0); i++)
+                        {
+                            values[i] = arr[i + lower, arr.GetLowerBound(1)];
+                        }
+                    }
+                }
+                catch { }
+                original[col] = values;
+            }
+
+            public void Set(int row, int col, object value)
+            {
+                if (!pending.TryGetValue(col, out SortedDictionary<int, object> colCells))
+                {
+                    colCells = new SortedDictionary<int, object>();
+                    pending[col] = colCells;
+                }
+                colCells[row] = value;
+            }
+
+            public object Get(int row, int col)
+            {
+                if (pending.TryGetValue(col, out SortedDictionary<int, object> colCells) && colCells.TryGetValue(row, out object v)) return v;
+                if (original.TryGetValue(col, out object[] values) && row >= firstRow && row <= lastRow) return values[row - firstRow];
+                return null;
+            }
+
+            public void Flush(dynamic sheet)
+            {
+                foreach (KeyValuePair<int, SortedDictionary<int, object>> colEntry in pending)
+                {
+                    string letter = ColumnLetter(colEntry.Key);
+                    List<KeyValuePair<int, object>> run = new List<KeyValuePair<int, object>>();
+                    foreach (KeyValuePair<int, object> cell in colEntry.Value)
+                    {
+                        if (run.Count > 0 && cell.Key != run[run.Count - 1].Key + 1)
+                        {
+                            WriteRun(sheet, letter, run);
+                            run.Clear();
+                        }
+                        run.Add(cell);
+                    }
+                    if (run.Count > 0) WriteRun(sheet, letter, run);
+                }
+                pending.Clear();
+            }
+
+            private static void WriteRun(dynamic sheet, string letter, List<KeyValuePair<int, object>> run)
+            {
+                int start = run[0].Key;
+                int end = run[run.Count - 1].Key;
+                if (run.Count == 1)
+                {
+                    sheet.Range[$"{letter}{start}"].Value = run[0].Value;
+                    return;
+                }
+                object[,] data = new object[run.Count, 1];
+                for (int i = 0; i < run.Count; i++) data[i, 0] = run[i].Value;
+                sheet.Range[$"{letter}{start}:{letter}{end}"].Value = data;
+            }
+
+            private static string ColumnLetter(int col)
+            {
+                string s = "";
+                while (col > 0)
+                {
+                    int rem = (col - 1) % 26;
+                    s = (char)('A' + rem) + s;
+                    col = (col - 1) / 26;
+                }
+                return s;
+            }
         }
 
         public static void PostaviValidacijuOnSheet(dynamic sheet, int lastRow = 300)

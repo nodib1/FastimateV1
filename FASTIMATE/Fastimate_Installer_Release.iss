@@ -1,8 +1,8 @@
 ; Inno Setup Script for FASTIMATE (Release Build)
-; Created for Dino Bratić - FASTIMATE v2.0
+; Created for Dino Bratić - FASTIMATE v4.0 (bez makroa)
 
 #define MyAppName "Fastimate"
-#define MyAppVersion "2.0"
+#define MyAppVersion "4.0"
 #define MyAppPublisher "Dino Bratić"
 #define MyAppExeName "FASTIMATE.exe"
 
@@ -21,7 +21,7 @@ DirExistsWarning=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ChangesAssociations=yes
 DisableProgramGroupPage=yes
-OutputBaseFilename=Fastimate_Setup_v2.0
+OutputBaseFilename=Fastimate_Setup_v{#MyAppVersion}
 SolidCompression=yes
 WizardStyle=modern
 

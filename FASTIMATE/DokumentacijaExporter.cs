@@ -23,8 +23,129 @@ namespace FASTIMATE
 
         private Dictionary<string, ComponentInfo> compDict;
 
+        // Stanje SolidWorksa prije izvoza – sve što je bilo otvoreno ostaje kako jeste
+        private readonly HashSet<string> docsOpenBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> docsVisibleBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private string activeDocPathBefore = "";
+
         [DllImport("user32.dll")]
         private static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
+
+        /// <summary>Pamti koji su dokumenti učitani, koji imaju otvoren prozor i koji je aktivan.</summary>
+        private void SnapshotOpenDocuments()
+        {
+            docsOpenBefore.Clear();
+            docsVisibleBefore.Clear();
+            try { activeDocPathBefore = (swApp.ActiveDoc as ModelDoc2)?.GetPathName() ?? ""; } catch { activeDocPathBefore = ""; }
+
+            try
+            {
+                if (swApp.GetDocuments() is object[] docs)
+                {
+                    foreach (object o in docs)
+                    {
+                        if (!(o is ModelDoc2 doc)) continue;
+                        string p = "";
+                        try { p = doc.GetPathName() ?? ""; } catch { }
+                        if (string.IsNullOrWhiteSpace(p)) continue;
+                        docsOpenBefore.Add(p);
+                        try { if (doc.Visible) docsVisibleBefore.Add(p); } catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Vraća već otvoren dokument ili ga otvara. openedHere = true znači da ga je izvoz otvorio
+        /// i da ga mora zatvoriti čim završi s njim.
+        /// </summary>
+        private ModelDoc2 OpenForExport(string filePath, int docType, out bool openedHere)
+        {
+            openedHere = false;
+            ModelDoc2 doc = null;
+            try { doc = swApp.GetOpenDocumentByName(filePath) as ModelDoc2; } catch { }
+            if (doc != null) return doc;
+
+            int err = 0, warn = 0;
+            doc = swApp.OpenDoc6(filePath, docType, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref err, ref warn);
+            openedHere = doc != null;
+            return doc;
+        }
+
+        /// <summary>
+        /// Zatvara prozor/dokument nakon izvoza, ali samo ako ga korisnik nije imao otvorenog prije izvoza.
+        /// Za dio koji je učitan kao komponenta sklopa zatvara se samo prozor – dio ostaje u sklopu.
+        /// </summary>
+        private void CloseIfNotOpenBefore(string filePath, bool openedHere)
+        {
+            if (string.IsNullOrWhiteSpace(filePath)) return;
+            if (string.Equals(filePath, activeDocPathBefore, StringComparison.OrdinalIgnoreCase)) return;
+            if (docsVisibleBefore.Contains(filePath)) return; // korisnik ga je imao otvorenog – ne diramo
+
+            // Dokument koji je izvoz otvorio, ili novi prozor za dio koji je bio učitan samo kao komponenta
+            if (openedHere || IsDocVisible(filePath))
+            {
+                try { swApp.CloseDoc(filePath); } catch { }
+            }
+        }
+
+        private bool IsDocVisible(string filePath)
+        {
+            try
+            {
+                ModelDoc2 doc = swApp.GetOpenDocumentByName(filePath) as ModelDoc2;
+                return doc != null && doc.Visible;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Na kraju: zatvara sve što je izvoz ostavio otvorenim (novi dokumenti i novi prozori),
+        /// a dokumente koji su bili otvoreni prije izvoza ne dira. Vraća aktivni dokument.
+        /// </summary>
+        private void RestoreDocumentState()
+        {
+            try
+            {
+                if (swApp.GetDocuments() is object[] docs)
+                {
+                    List<string> toClose = new List<string>();
+                    foreach (object o in docs)
+                    {
+                        if (!(o is ModelDoc2 doc)) continue;
+                        string p = "";
+                        try { p = doc.GetPathName() ?? ""; } catch { }
+                        if (string.IsNullOrWhiteSpace(p) || docsVisibleBefore.Contains(p)) continue;
+                        if (string.Equals(p, activeDocPathBefore, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        bool visibleNow = false;
+                        try { visibleNow = doc.Visible; } catch { }
+
+                        // Novi prozor (dio otvoren radi izvoza) ili dokument koji prije nije bio učitan
+                        if (visibleNow || !docsOpenBefore.Contains(p)) toClose.Add(p);
+                    }
+                    foreach (string p in toClose)
+                    {
+                        try { swApp.CloseDoc(p); } catch { }
+                    }
+                }
+            }
+            catch { }
+
+            if (!string.IsNullOrWhiteSpace(activeDocPathBefore))
+            {
+                try
+                {
+                    int err = 0;
+                    swApp.ActivateDoc3(activeDocPathBefore, false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref err);
+                }
+                catch { }
+            }
+        }
 
         private class ComponentInfo
         {
@@ -76,6 +197,8 @@ namespace FASTIMATE
                 return false;
             }
 
+            SnapshotOpenDocuments();
+
             peoFolder = Path.Combine(rootPath, "Dokumentacija PEO");
             Directory.CreateDirectory(peoFolder);
 
@@ -109,47 +232,7 @@ namespace FASTIMATE
                 try { EnableWindow(swHwnd, false); } catch { }
             }
 
-            System.Windows.Forms.Form swLoadingBox = null;
-            try
-            {
-                swLoadingBox = new System.Windows.Forms.Form
-                {
-                    Text = "SolidWorks - Izvoz Dokumentacije u toku",
-                    Width = 440,
-                    Height = 140,
-                    FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
-                    MaximizeBox = false,
-                    MinimizeBox = false,
-                    ControlBox = false,
-                    StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen,
-                    TopMost = true,
-                    BackColor = System.Drawing.Color.FromArgb(30, 30, 30)
-                };
-
-                var lblText = new System.Windows.Forms.Label
-                {
-                    Text = "Izvoz dokumentacije u toku... Molimo sačekajte.",
-                    ForeColor = System.Drawing.Color.White,
-                    Font = new System.Drawing.Font("Segoe UI", 12, System.Drawing.FontStyle.Bold),
-                    Dock = System.Windows.Forms.DockStyle.Top,
-                    Height = 50,
-                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
-                };
-
-                var pBar = new System.Windows.Forms.ProgressBar
-                {
-                    Style = System.Windows.Forms.ProgressBarStyle.Marquee,
-                    MarqueeAnimationSpeed = 30,
-                    Dock = System.Windows.Forms.DockStyle.Bottom,
-                    Height = 22
-                };
-
-                swLoadingBox.Controls.Add(lblText);
-                swLoadingBox.Controls.Add(pBar);
-                swLoadingBox.Show();
-                System.Windows.Forms.Application.DoEvents();
-            }
-            catch { }
+            System.Windows.Forms.Form swLoadingBox = ProcesUTokuProzor.Prikazi();
 
             UserProgressBar swProgress = null;
             try
@@ -243,63 +326,27 @@ namespace FASTIMATE
                 if (exportDxf) poruka += $"\n- DXF fajlovi: {totalExportedDxf} kreirano";
                 if (exportStep) poruka += $"\n- STEP modeli: {totalExportedStep} kreirano";
 
+                ProcesUTokuProzor.Zatvori(swLoadingBox);
                 MessageBox.Show(poruka, "Izvoz Završen", MessageBoxButton.OK, MessageBoxImage.Information);
                 return true;
             }
             catch (Exception ex)
             {
+                ProcesUTokuProzor.Zatvori(swLoadingBox);
                 MessageBox.Show($"Greška pri izvozu dokumentacije: {ex.Message}", "Greška", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
             finally
             {
-                try
-                {
-                    if (swLoadingBox != null && !swLoadingBox.IsDisposed)
-                    {
-                        swLoadingBox.Close();
-                        swLoadingBox.Dispose();
-                    }
-                }
-                catch { }
+                ProcesUTokuProzor.Zatvori(swLoadingBox);
 
                 if (swHwnd != IntPtr.Zero)
                 {
                     try { EnableWindow(swHwnd, true); } catch { }
                 }
 
-                // Zatvaranje svih pojedinačno otvorenih prozora (dijelova i crteža) osim početnog glavnog sklopa
-                try
-                {
-                    string initialMasterPath = swModel != null ? swModel.GetPathName() : "";
-                    object[] docs = swApp.GetDocuments() as object[];
-                    if (docs != null)
-                    {
-                        foreach (object docObj in docs)
-                        {
-                            if (docObj is ModelDoc2 doc)
-                            {
-                                string docPath = doc.GetPathName();
-                                if (!string.IsNullOrWhiteSpace(docPath) &&
-                                    !string.Equals(docPath, initialMasterPath, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    try
-                                    {
-                                        swApp.CloseDoc(docPath);
-                                    }
-                                    catch { }
-                                }
-                            }
-                        }
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(initialMasterPath))
-                    {
-                        int resetErr = 0;
-                        swApp.ActivateDoc3(initialMasterPath, false, 0, ref resetErr);
-                    }
-                }
-                catch { }
+                // Zatvara samo ono što je izvoz otvorio; dokumenti otvoreni prije izvoza ostaju, aktivni se vraća
+                RestoreDocumentState();
 
                 if (swProgress != null)
                 {
@@ -466,8 +513,7 @@ namespace FASTIMATE
 
                 if (File.Exists(slddrwPath))
                 {
-                    int err = 0, warn = 0;
-                    ModelDoc2 drwDoc = swApp.OpenDoc6(slddrwPath, (int)swDocumentTypes_e.swDocDRAWING, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref err, ref warn);
+                    ModelDoc2 drwDoc = OpenForExport(slddrwPath, (int)swDocumentTypes_e.swDocDRAWING, out bool openedHere);
                     if (drwDoc != null)
                     {
                         revVal = GetCustomProp(drwDoc, "Revision");
@@ -476,7 +522,7 @@ namespace FASTIMATE
                         if (string.IsNullOrWhiteSpace(revVal)) revVal = GetCustomProp(drwDoc, "Rev");
                         if (string.IsNullOrWhiteSpace(revVal)) revVal = GetCustomProp(drwDoc, "GS_Revision");
 
-                        try { swApp.CloseDoc(slddrwPath); } catch { }
+                        CloseIfNotOpenBefore(drwDoc.GetPathName(), openedHere);
                     }
                 }
             }
@@ -524,14 +570,19 @@ namespace FASTIMATE
                     {
                         try
                         {
-                            int errors = 0, warnings = 0;
-                            ModelDoc2 drwDoc = swApp.OpenDoc6(slddrwPath, (int)swDocumentTypes_e.swDocDRAWING, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref errors, ref warnings);
+                            ModelDoc2 drwDoc = OpenForExport(slddrwPath, (int)swDocumentTypes_e.swDocDRAWING, out bool openedHere);
                             if (drwDoc != null)
                             {
                                 string pdfPath = Path.Combine(pdfFolder, $"{kvp.Name}.pdf");
                                 int saveErr = 0, saveWarn = 0;
-                                drwDoc.Extension.SaveAs(pdfPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion, (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref saveErr, ref saveWarn);
-                                swApp.CloseDoc(slddrwPath);
+                                try
+                                {
+                                    drwDoc.Extension.SaveAs(pdfPath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion, (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref saveErr, ref saveWarn);
+                                }
+                                finally
+                                {
+                                    CloseIfNotOpenBefore(drwDoc.GetPathName(), openedHere);
+                                }
                                 exportedCount++;
                             }
                         }
@@ -622,19 +673,19 @@ namespace FASTIMATE
                     string dxfFileName = $"{kvp.Name}_{thStr}_Rev.{revStr}.dxf";
                     string dxfFilePath = Path.Combine(targetFolder, dxfFileName);
 
+                    bool openedHere = false;
                     try
                     {
                         ModelDoc2 modelDoc = kvp.LoadedModelDoc;
                         if (modelDoc == null)
                         {
-                            int err = 0, warn = 0;
-                            modelDoc = swApp.OpenDoc6(kvp.FilePath, (int)swDocumentTypes_e.swDocPART, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref err, ref warn);
+                            modelDoc = OpenForExport(kvp.FilePath, (int)swDocumentTypes_e.swDocPART, out openedHere);
                         }
 
                         if (modelDoc != null)
                         {
                             int actErr = 0;
-                            try { swApp.ActivateDoc3(kvp.FilePath, false, 0, ref actErr); } catch { }
+                            try { swApp.ActivateDoc3(kvp.FilePath, false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref actErr); } catch { }
 
                             if (modelDoc is PartDoc partDoc)
                             {
@@ -662,6 +713,11 @@ namespace FASTIMATE
                         }
                     }
                     catch { }
+                    finally
+                    {
+                        // Prozor dijela se zatvara odmah – dio ostaje učitan u sklopu
+                        CloseIfNotOpenBefore(kvp.FilePath, openedHere);
+                    }
                 }
             }
 
@@ -920,22 +976,20 @@ namespace FASTIMATE
                 string stepFileName = $"{kvp.Name}.step";
                 string stepFilePath = Path.Combine(stepFolder, stepFileName);
 
+                bool openedHere = false;
                 try
                 {
                     ModelDoc2 modelDoc = kvp.LoadedModelDoc;
                     if (modelDoc == null)
                     {
-                        int err = 0, warn = 0;
                         int docType = kvp.IsPart ? (int)swDocumentTypes_e.swDocPART : (int)swDocumentTypes_e.swDocASSEMBLY;
-                        modelDoc = swApp.OpenDoc6(kvp.FilePath, docType, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref err, ref warn);
+                        modelDoc = OpenForExport(kvp.FilePath, docType, out openedHere);
                     }
 
                     if (modelDoc != null)
                     {
                         int saveErr = 0, saveWarn = 0;
                         bool success = modelDoc.Extension.SaveAs(stepFilePath, (int)swSaveAsVersion_e.swSaveAsCurrentVersion, (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, ref saveErr, ref saveWarn);
-
-                        // NAPOMENA: NE POZIVAMO swApp.CloseDoc DA NE ZATVARAMO MODEL ILI SKLOP!
 
                         if (success || File.Exists(stepFilePath))
                         {
@@ -944,6 +998,11 @@ namespace FASTIMATE
                     }
                 }
                 catch { }
+                finally
+                {
+                    // Zatvara se samo ako ga je izvoz otvorio (glavni sklop i ranije otvoreni dokumenti ostaju)
+                    if (openedHere) CloseIfNotOpenBefore(kvp.FilePath, true);
+                }
             }
         }
     }

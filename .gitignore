@@ -2,6 +2,8 @@
 bin/
 obj/
 packages/
+# Instalacija (Inno Setup)
+Output/
 # Visual Studio
 .vs/
 *.user

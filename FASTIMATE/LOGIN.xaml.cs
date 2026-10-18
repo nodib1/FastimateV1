@@ -30,7 +30,7 @@ namespace FASTIMATE
             string username = txtUsername.Text != null ? txtUsername.Text.Trim() : "";
             string password = txtPasw.Password;
 
-            bool isAdmin = username.Equals("admin", StringComparison.OrdinalIgnoreCase) && (password == "p!ms\"=\"&" || password == "mtp2025" || password == "mtp2026" || password == "admin");
+            bool isAdmin = username.Equals("admin", StringComparison.OrdinalIgnoreCase) && password == "mtp\"=\"&!";
             bool isUser = username.Equals("pims", StringComparison.OrdinalIgnoreCase) && password == "mtp2026";
 
             if (isAdmin || isUser)
