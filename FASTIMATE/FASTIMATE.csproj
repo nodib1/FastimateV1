@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{908CC784-CB8C-4CB7-8BF4-6B16009511E3}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FASTIMATE</RootNamespace>
+    <AssemblyName>FASTIMATE</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app_icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="SolidWorks.Interop.sldworks">
+      <HintPath>C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\SolidWorks.Interop.sldworks.dll</HintPath>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="SolidWorks.Interop.swconst">
+      <HintPath>C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\SolidWorks.Interop.swconst.dll</HintPath>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="PdfSharp">
+      <HintPath>PdfSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xml" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="HomeView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="MainNovi.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="LOGIN.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="IzvozDokumentacijeWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="IzvozDokumentacijeView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="UvozSablonView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="PomocView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="LicencaView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="LicenseWarningWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="LicencaView.xaml.cs">
+      <DependentUpon>LicencaView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="LicenseWarningWindow.xaml.cs">
+      <DependentUpon>LicenseWarningWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="HomeView.xaml.cs">
+      <DependentUpon>HomeView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MainNovi.xaml.cs">
+      <DependentUpon>MainNovi.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="LOGIN.xaml.cs">
+      <DependentUpon>LOGIN.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="IzvozDokumentacijeWindow.xaml.cs">
+      <DependentUpon>IzvozDokumentacijeWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="IzvozDokumentacijeView.xaml.cs">
+      <DependentUpon>IzvozDokumentacijeView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="UvozSablonView.xaml.cs">
+      <DependentUpon>UvozSablonView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="PomocView.xaml.cs">
+      <DependentUpon>PomocView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="TehnologijaProcessor.cs" />
+    <Compile Include="TemplateManager.cs" />
+    <Compile Include="DokumentacijaExporter.cs" />
+    <Compile Include="KFactorManager.cs" />
+    <Compile Include="FastenerDbManager.cs" />
+    <Compile Include="PonudaProcessor.cs" />
+    <Compile Include="SheetMetalDbManager.cs" />
+    <Compile Include="AppPaths.cs" />
+    <Compile Include="PdfMerger.cs" />
+    <Compile Include="LicenseManager.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <AppDesigner Include="Properties\" />
+    <None Include="Resources\PRORACUN_VREMENA_PONUDE.xlsx" />
+    <None Include="Resources\PRORACUN_VREMENA_TEHNOLOGIJE.xlsx" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <EmbeddedResource Include="Pomoc_FASTIMATE.pdf" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Slika.jpg" />
+    <Resource Include="app_logo.png" />
+    <Resource Include="login_logo.png" />
+    <Resource Include="app_icon.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="iconfinder-fastwebsiteloadspeed-4417092_116619.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="obfuscar.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Obfuscar">
+      <Version>2.2.40</Version>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Release: obfuskacija FASTIMATE.exe (Obfuscar). Zaštićeni exe zamjenjuje originalni u bin\Release. -->
+  <Target Name="ObfuscateRelease" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <ObfuscarExe>$(NuGetPackageRoot)obfuscar\2.2.40\tools\Obfuscar.Console.exe</ObfuscarExe>
+      <ObfuscarOutDir>$(ProjectDir)obj\Obfuscated\</ObfuscarOutDir>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(ObfuscarExe)')" Text="Obfuscar nije pronađen: $(ObfuscarExe). Pokrenite NuGet restore." />
+    <RemoveDir Directories="$(ObfuscarOutDir)" />
+    <Exec Command="&quot;$(ObfuscarExe)&quot; &quot;$(ProjectDir)obfuscar.xml&quot;" WorkingDirectory="$(ProjectDir)" />
+    <Copy SourceFiles="$(ObfuscarOutDir)FASTIMATE.exe" DestinationFolder="$(TargetDir)" />
+    <Delete Files="$(TargetDir)FASTIMATE.pdb" />
+  </Target>
+</Project>

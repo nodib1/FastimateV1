@@ -1,0 +1,128 @@
+<UserControl x:Class="FASTIMATE.LicencaView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="540" d:DesignWidth="740"
+             Background="Transparent" FontFamily="Segoe UI" FontSize="14"
+             Loaded="UserControl_Loaded">
+
+    <UserControl.Resources>
+        <Style x:Key="RoundedButtonStyleBase" TargetType="Button">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="10,0"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="25,45,25,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Zaglavlje -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="UPRAVLJANJE LICENCOM APLIKACIJE" FontSize="20" FontWeight="Bold" Foreground="#00BCD4"/>
+                <TextBlock Text="Pregled stanja licence, unosa klijenta i broja dana važenja za FASTIMATE." FontSize="12" Foreground="#AAA" Margin="0,3,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Sadržaj -->
+        <Border Grid.Row="1" Background="#2C2C2C" CornerRadius="10" BorderBrush="#444" BorderThickness="1" Padding="25">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+
+                    <!-- Kartica 1: Trenutni Status Licence -->
+                    <Border Background="#222222" CornerRadius="8" Padding="20" Margin="0,0,0,20" BorderBrush="#383838" BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="TRENUTNI STATUS LICENCE" FontSize="14" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,12"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Licencirano za (Firma): " Foreground="#AAA" FontWeight="SemiBold" Width="160"/>
+                                    <TextBlock x:Name="txtCompanyNameVal" Text="--" Foreground="#00BCD4" FontWeight="Bold"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Status licence: " Foreground="#AAA" FontWeight="SemiBold" Width="160"/>
+                                    <TextBlock x:Name="txtStatusVal" Text="Licenca nije aktivirana" Foreground="#FF5252" FontWeight="Bold"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="Važi do datuma: " Foreground="#AAA" FontWeight="SemiBold" Width="160"/>
+                                    <TextBlock x:Name="txtExpDateVal" Text="--" Foreground="#E0E0E0"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Preostalo vremena: " Foreground="#AAA" FontWeight="SemiBold" Width="160"/>
+                                    <TextBlock x:Name="txtRemainingDaysVal" Text="0 dana" Foreground="#81C784" FontWeight="Bold" FontSize="16"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Border Grid.Column="1" x:Name="badgeBorder" Background="#332222" CornerRadius="8" Padding="15,10" VerticalAlignment="Center" BorderBrush="#FF5252" BorderThickness="1">
+                                <TextBlock x:Name="txtBadge" Text="ISTEKLA / NEAKTIVNA" Foreground="#FF5252" FontWeight="Bold" FontSize="13"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- Kartica 2: Unos i Izmjena Licence (Firma + Trajanje u danima) -->
+                    <Border Background="#222222" CornerRadius="8" Padding="20" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="UNOS / IZMJENA LICENCE (ADMINISTRATION)" FontSize="14" FontWeight="Bold" Foreground="#4FC3F7" Margin="0,0,0,12"/>
+
+                            <!-- Naziv Firme -->
+                            <TextBlock Text="Naziv Firme / Klijenta:" Foreground="#DDD" FontSize="13" Margin="0,0,0,6"/>
+                            <TextBox x:Name="txtInputCompany" Height="40" Background="#1A1A1A" Foreground="#FFFFFF" BorderBrush="#444" BorderThickness="1"
+                                     FontSize="14" Padding="10,8" VerticalContentAlignment="Center" Margin="0,0,0,15"/>
+
+                            <!-- Broj Dana -->
+                            <TextBlock Text="Trajanje licence u danima (npr. 365 za 1 godinu, 180 za pola godine):" Foreground="#DDD" FontSize="13" Margin="0,0,0,6"/>
+                            <TextBox x:Name="txtInputDays" Height="40" Background="#1A1A1A" Foreground="#00BCD4" BorderBrush="#444" BorderThickness="1"
+                                     FontSize="14" FontWeight="Bold" Padding="10,8" VerticalContentAlignment="Center" Margin="0,0,0,15"/>
+
+                            <!-- Autentifikacijski kod -->
+                            <TextBlock Text="Autentifikacijski kod:" Foreground="#FFB74D" FontSize="13" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <PasswordBox x:Name="txtMasterPin" Height="40" Background="#1A1A1A" Foreground="#FFB74D" BorderBrush="#FFB74D" BorderThickness="1"
+                                         FontSize="16" VerticalContentAlignment="Center" Margin="0,0,0,20"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock x:Name="lblMessage" Grid.Column="0" Text="" Foreground="#81C784" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+
+                                <Button Grid.Column="1" Content="SAČUVAJ I AKTIVIRAJ LICENCU" Width="240" Height="44"
+                                        Background="#00BCD4" Foreground="White" BorderBrush="#00BCD4" FontSize="13"
+                                        Style="{StaticResource RoundedButtonStyleBase}" Click="btnSacuvaj_Click"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

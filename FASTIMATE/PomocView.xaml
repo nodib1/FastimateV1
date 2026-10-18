@@ -1,0 +1,134 @@
+<UserControl x:Class="FASTIMATE.PomocView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="540" d:DesignWidth="740"
+             Background="Transparent" FontFamily="Segoe UI" FontSize="14">
+
+    <UserControl.Resources>
+        <Style x:Key="RoundedButtonStyleBase" TargetType="Button">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="10,0"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="25,45,25,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Zaglavlje i dugme za otvaranje vani -->
+        <Grid Grid.Row="0" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="POMOĆ I UPUTSTVO ZA KORIŠTENJE" FontSize="20" FontWeight="Bold" Foreground="#00BCD4"/>
+                <TextBlock Text="Uputstvo za rad sa aplikacijom FASTIMATE." FontSize="12" Foreground="#AAA" Margin="0,3,0,0"/>
+            </StackPanel>
+
+            <Button Grid.Column="1" Content="OTVORI PDF VAN APLIKACIJE" Width="220" Height="42"
+                    Background="#00BCD4" Foreground="White" BorderBrush="#00BCD4" FontSize="13"
+                    Style="{StaticResource RoundedButtonStyleBase}" Click="btnOtveriPdfVani_Click"/>
+        </Grid>
+
+        <!-- Nativni WPF Prikaz Uputstva u Formi -->
+        <Border Grid.Row="1" Background="#2C2C2C" CornerRadius="10" BorderBrush="#444" BorderThickness="1" Padding="20">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="0,0,10,0">
+
+                    <!-- Kartica 1 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="1. UVOD I OSNOVNI PRINCIP RADA (v2.0)" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            <TextBlock Text="FASTIMATE je specijalizovani softverski alat namenjen za automatsko normiranje tehnoloških procesa, proračun radnih vremena i komercijalnu izradu ponuda iz SolidWorks 3D modela." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <TextBlock Text="• Korisnički panel: Operativni rad tehnologa i komercijalista za proračun vremena, ponuda i izvoz dokumentacije." Foreground="#81C784" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Admin panel: Napredni modul za administratore namenjen kontroli baza podataka, K-faktora, limova i licenci." Foreground="#81C784" TextWrapping="Wrap" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Kartica 2 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="2. PRIJAVA NA SISTEM (LOGIN)" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            <TextBlock Text="Za pristup aplikaciji unesite vaše korisničke podatke na prijavnom ekranu i kliknite 'PRIJAVI SE'." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <TextBlock Text="• Operativni korisnik: Korisničko ime 'pims' | Lozinka 'mtp2026'" Foreground="#81C784" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Administratorski korisnik: Unesite admin pristupne podatke za automatsko otvaranje Admin panela." Foreground="#81C784" TextWrapping="Wrap" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Kartica 3 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="3. KORISNIČKI PANEL" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="3.1 Modul 'Ponuda'" FontWeight="Bold" Foreground="#4FC3F7" Margin="0,4,0,4"/>
+                            <TextBlock Text="• Brza procjena bez uslova za idente u SW modeliranju - aplikacija sama upisuje sve elemente." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Automatsko prepoznavanje vijčane robe (DIN/ISO standardi) i dodjela identa." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Automatska sumarizacija limova: Kreira se sheet 'Sumirano' sa razvrstanim limovima i ukupnom masom (kg)." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,10"/>
+
+                            <TextBlock Text="3.2 Modul 'Tehnologija'" FontWeight="Bold" Foreground="#4FC3F7" Margin="0,4,0,4"/>
+                            <TextBlock Text="• Obavezan GS_Ident: Sve pozicije u SW modeliranju moraju imati unesen custom property GS_Ident." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Proračun zavarivanja (Weld Bead) i zaptivne trake ('Schaumdichtung_dimenzija')." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Automatska vizuelna kontrola K-faktora: Ako K-faktor odstupa od baze, ćelija u tabeli se boji u blago crvenu boju." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Kartica 4 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="4. IZVOZ DOKUMENTACIJE &amp; LOG FAJLOVI" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            <TextBlock Text="Omogućava automatsko generisanje tehničke dokumentacije iz aktivnog CAD modela:" Foreground="#E0E0E0" Margin="0,0,0,6"/>
+                            <TextBlock Text="• PDF crteži: Automatski izvoz 2D tehničkih crteža." Foreground="#E0E0E0" Margin="10,0,0,4"/>
+                            <TextBlock Text="• DXF fajlovi: Razvijena stanja limova za CNC rezanje (razvrstano po materijalima)." Foreground="#E0E0E0" TextWrapping="Wrap" Margin="10,0,0,4"/>
+                            <TextBlock Text="• STEP modeli: Izvoz 3D modela za dalju obradu." Foreground="#E0E0E0" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Dugme SVE: Jednim klikom pokreće izvoz svih formata istovremeno." Foreground="#E0E0E0" Margin="10,0,0,6"/>
+                            <TextBlock Text="• Log Fajl detekcija: Ako za neku poziciju ne postoji npr. PDF crtež, aplikacija nastavlja rad i u projektom folderu kreira Log fajl sa spiskom nedostajućih crteža." Foreground="#81C784" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Kartica 5 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="5. ADMIN PANEL (TAB IMPORT)" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            <TextBlock Text="Namenjen administratorima sistema za potpunu kontrolu nad bazama podataka:" Foreground="#E0E0E0" Margin="0,0,0,6"/>
+                            <TextBlock Text="• Sistemske Excel tabele: Pregled i uvoz novih specifikacija šablona." Foreground="#E0E0E0" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Baza vijčane robe: Šifrarnik DIN/ISO dijelova uz automatsku nadogradnju (Import)." Foreground="#E0E0E0" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Baza sirovina limova: Upravljanje limovima po vrstama, debljinama i ERP identima." Foreground="#E0E0E0" Margin="10,0,0,4"/>
+                            <TextBlock Text="• Baza K-faktora: Definisani normirani K-faktori po debljinama za čelik, inox i aluminijum." Foreground="#E0E0E0" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Kartica 6 -->
+                    <Border Background="#222222" CornerRadius="8" Padding="15" Margin="0,0,0,0" BorderBrush="#383838" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="6. TEHNIČKA PODRŠKA" FontSize="16" FontWeight="Bold" Foreground="#FFB74D" Margin="0,0,0,8"/>
+                            <TextBlock Text="Administrator / Autor: Dino Bratić" Foreground="#E0E0E0" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <TextBlock Text="Za sva pitanja i prijedloge nadogradnji obratite se administratoru sistema unutar vaše organizacije." Foreground="#AAA" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Obfuscar konfiguracija za FASTIMATE (pokreće se automatski u Release buildu).
+  - Preimenuje klase, metode, polja i propertyje u nečitljiva imena
+  - Šifrira tekstualne konstante (HideStrings)
+  Izuzeci su tipovi koje WPF/XAML ili .NET koriste preko imena (bindinzi, Settings).
+-->
+<Obfuscator>
+  <Var name="InPath" value=".\bin\Release" />
+  <Var name="OutPath" value=".\obj\Obfuscated" />
+  <Var name="KeepPublicApi" value="false" />
+  <Var name="HidePrivateApi" value="true" />
+  <Var name="HideStrings" value="true" />
+  <Var name="RenameProperties" value="true" />
+  <Var name="RenameEvents" value="true" />
+  <Var name="RenameFields" value="true" />
+  <Var name="OptimizeMethods" value="true" />
+  <Var name="SuppressIldasm" value="true" />
+
+  <Module file="$(InPath)\FASTIMATE.exe">
+    <!-- Settings i Resources rade preko imena -->
+    <SkipNamespace name="FASTIMATE.Properties" />
+
+    <!-- XAML prozori i kontrole: ime klase mora ostati (BAML), članovi se obfuskuju -->
+    <SkipType name="FASTIMATE.App" />
+    <SkipType name="FASTIMATE.MainNovi" />
+    <SkipType name="FASTIMATE.LOGIN" />
+    <SkipType name="FASTIMATE.HomeView" />
+    <SkipType name="FASTIMATE.IzvozDokumentacijeView" />
+    <SkipType name="FASTIMATE.IzvozDokumentacijeWindow" />
+    <SkipType name="FASTIMATE.UvozSablonView" />
+    <SkipType name="FASTIMATE.PomocView" />
+    <SkipType name="FASTIMATE.LicencaView" />
+    <SkipType name="FASTIMATE.LicenseWarningWindow" />
+
+    <!-- Klase prikazane u tabelama (Binding po imenu propertyja) -->
+    <SkipType name="FASTIMATE.ErpFastenerItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+    <SkipType name="FASTIMATE.KFactorRuleItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+    <SkipType name="FASTIMATE.SheetMetalRawItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+  </Module>
+</Obfuscator>
