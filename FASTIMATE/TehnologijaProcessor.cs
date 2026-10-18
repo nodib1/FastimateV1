@@ -43,7 +43,7 @@ namespace FASTIMATE
         private const int ColNavarneInox = 83;
         private const int ColZavarKomadaInox = 86;
         private const int ColZavarInox = 87;
-        private const int ColUpresavanje = 104;         // CZ
+        private const int ColPlastifikacija = 104;      // CZ – formula, samo se čita
         private const int ColSchaumdicht = 107;
         private const int ColVijci = 114;               // DJ
         private const int ColMatice = 115;              // DK
@@ -984,7 +984,7 @@ namespace FASTIMATE
                 // Postojeće vrijednosti čitamo jednom – za ručno unesene podatke i čišćenje matica
                 CellBuffer buffer = new CellBuffer(FirstRow, LastScanRow);
                 foreach (int col in new[] { ColNaziv, ColIdent, ColOsnovniNaziv, ColKolicina, ColDebljina, ColFinish,
-                                            ColUpresavanje, ColVijci, ColMatice, ColMaterijal, ColPovrsinskaZastita })
+                                            ColPlastifikacija, ColVijci, ColMatice, ColMaterijal, ColPovrsinskaZastita })
                 {
                     buffer.LoadColumn(sheet, col);
                 }
@@ -1005,8 +1005,8 @@ namespace FASTIMATE
                     rowsByIndex.TryGetValue(r, out RowData row);
                     bool isGp = r == gpRow;
 
-                    if (isGp) WriteSurfaceProtection(buffer, r, main.PovrsinskaZastita, main.Finish, false);
-                    else WriteSurfaceProtection(buffer, r, row?.PovrsinskaZastita, row?.Finish, true);
+                    if (isGp) WriteSurfaceProtection(buffer, r, main.PovrsinskaZastita, main.Finish);
+                    else WriteSurfaceProtection(buffer, r, row?.PovrsinskaZastita, row?.Finish);
                     buffer.Set(r, ColBrojKomponenti, isGp ? (object)main.ChildCount : null);
 
                     object kValue = null;
@@ -1032,6 +1032,8 @@ namespace FASTIMATE
                 try { sheet.Range[$"EH{FirstRow}:EH{gpRow}"].NumberFormat = "General"; } catch { }
 
                 buffer.Flush(sheet);
+
+                RestorePlastifikacijaFormula(sheet, gpRow);
 
                 try { sheet.Range[$"EH{FirstRow}:EH{gpRow}"].Interior.ColorIndex = -4142; } catch { }
                 foreach (int r in highlightRows)
@@ -1063,28 +1065,22 @@ namespace FASTIMATE
         }
 
         /// <summary>
-        /// Ako površinska zaštita nije unesena ili je "-"/"--": J i EF ostaju prazni.
-        /// Inače EF = površinska zaštita, J = Finish iz modela (ili postojeća vrijednost iz Excela).
-        /// Za glavni sklop se zaštita uzima samo iz modela (allowExcelPz = false).
+        /// EF = "Površinska zaštita" tačno kako piše u modelu (i "-", "--"); ako je prazna – EF prazno.
+        /// J = "Finish" iz modela, ali samo ako površinska zaštita nije prazna, "-" ili "--"; inače J prazno.
         /// </summary>
-        private static void WriteSurfaceProtection(CellBuffer buffer, int r, string pzFromModel, string finishFromModel, bool allowExcelPz)
+        private static void WriteSurfaceProtection(CellBuffer buffer, int r, string pzFromModel, string finishFromModel)
         {
             string pz = (pzFromModel ?? "").Trim();
-            if (pz == "" && allowExcelPz) pz = Convert.ToString(buffer.Get(r, ColPovrsinskaZastita))?.Trim() ?? "";
+            buffer.Set(r, ColPovrsinskaZastita, pz == "" ? null : pz);
 
-            if (pz == "" || pz.Trim('-').Length == 0)
+            if (pz == "" || pz == "-" || pz == "--")
             {
-                buffer.Set(r, ColPovrsinskaZastita, null);
                 buffer.Set(r, ColFinish, null);
                 return;
             }
 
-            buffer.Set(r, ColPovrsinskaZastita, pz);
-
             string finish = (finishFromModel ?? "").Trim();
-            if (finish == "") finish = Convert.ToString(buffer.Get(r, ColFinish))?.Trim() ?? "";
-
-            if (finish == "" || finish.Trim('-').Length == 0)
+            if (finish == "")
             {
                 buffer.Set(r, ColFinish, null);
             }
@@ -1124,7 +1120,8 @@ namespace FASTIMATE
         }
 
         /// <summary>
-        /// Uprešne (PEM) matice idu u kolonu CZ, obične matice za montažu u DK.
+        /// Obične matice za montažu idu u DK; uprešne (PEM) matice se čiste iz DK/DJ.
+        /// Kolona CZ (Plastifikacija) je formula i ovdje se nikad ne upisuje.
         /// Prolazi kroz sve popunjene redove (do 3 uzastopna prazna).
         /// </summary>
         private static void SanitizeNutAndFastenerColumns(CellBuffer buffer)
@@ -1152,18 +1149,16 @@ namespace FASTIMATE
 
                 if (IsPressFitNutOrFastener(checkStr))
                 {
-                    buffer.Set(r, ColUpresavanje, qty);
                     buffer.Set(r, ColMatice, null);
                     if (!checkStr.Contains("vijak")) buffer.Set(r, ColVijci, null);
                 }
                 else if (IsAssemblyNut(checkStr))
                 {
                     buffer.Set(r, ColMatice, qty);
-                    buffer.Set(r, ColUpresavanje, null);
                 }
                 else
                 {
-                    object val104 = buffer.Get(r, ColUpresavanje);
+                    object val104 = buffer.Get(r, ColPlastifikacija);
                     if (val104 != null && !string.IsNullOrWhiteSpace(Convert.ToString(val104)))
                     {
                         buffer.Set(r, ColMatice, null);
@@ -1180,6 +1175,29 @@ namespace FASTIMATE
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Ranije verzije su u CZ (Plastifikacija) upisivale količinu PEM matica i brisale formulu.
+        /// Ako u redu nema formule, vraća se formula iz šablona.
+        /// </summary>
+        private static void RestorePlastifikacijaFormula(dynamic sheet, int lastRow)
+        {
+            try
+            {
+                if (!(sheet.Range[$"CZ{FirstRow}:CZ{lastRow}"].Formula is object[,] formulas)) return;
+
+                int lower = formulas.GetLowerBound(0);
+                for (int i = 0; i <= lastRow - FirstRow; i++)
+                {
+                    string f = Convert.ToString(formulas[lower + i, formulas.GetLowerBound(1)]) ?? "";
+                    if (f.StartsWith("=")) continue;
+
+                    int r = FirstRow + i;
+                    sheet.Range[$"CZ{r}"].Formula = $"=IF(J{r}=0,\"--\",J{r}/$CZ$3/(24)*DA{r})";
+                }
+            }
+            catch { }
         }
 
         private static void PostaviValidaciju(dynamic sheet)
