@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -286,7 +286,7 @@ namespace FASTIMATE
 
                 // Upisi se skupljaju i šalju u Excel u blokovima (Flush prije preračuna)
                 cells = new CellBuffer(10, 1000);
-                foreach (int col in new[] { 1, 2, 3, 4, 10, 136 }) cells.LoadColumn(excelSheet, col);
+                foreach (int col in new[] { 1, 2, 3, 4, 10, 136 }) cells.LoadColumn((object)excelSheet, col);
 
                 // Ubrzanje API poziva iz vanjske aplikacije
                 try { swApp.CommandInProgress = true; } catch { }
@@ -386,7 +386,7 @@ namespace FASTIMATE
                 {
                     try { excelSheet.Cells[tc.Key, tc.Value].NumberFormat = "@"; } catch { }
                 }
-                cells.Flush(excelSheet);
+                cells.Flush((object)excelSheet);
 
                 PostaviValidaciju();
 
@@ -2794,12 +2794,12 @@ namespace FASTIMATE
                     {
                         if (run.Count > 0 && cell.Key != run[run.Count - 1].Key + 1)
                         {
-                            WriteRun(sheet, letter, run);
+                            WriteRun((object)sheet, letter, run);
                             run.Clear();
                         }
                         run.Add(cell);
                     }
-                    if (run.Count > 0) WriteRun(sheet, letter, run);
+                    if (run.Count > 0) WriteRun((object)sheet, letter, run);
                 }
                 pending.Clear();
             }
@@ -2855,7 +2855,7 @@ namespace FASTIMATE
 
         private void PostaviValidaciju()
         {
-            PostaviValidacijuOnSheet(excelSheet, rowIndex + 1);
+            PostaviValidacijuOnSheet((object)excelSheet, rowIndex + 1);
         }
     }
 }

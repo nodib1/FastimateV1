@@ -194,6 +194,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="obfuscar.xml" />
+    <None Include="ProvjeraObfuskacije.ps1" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Obfuscar">
@@ -209,6 +210,7 @@
       <ObfuscarOutDir>$(ProjectDir)obj\Obfuscated\</ObfuscarOutDir>
     </PropertyGroup>
     <Error Condition="!Exists('$(ObfuscarExe)')" Text="Obfuscar nije pronađen: $(ObfuscarExe). Pokrenite NuGet restore." />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)ProvjeraObfuskacije.ps1&quot; -Exe &quot;$(ProjectDir)$(IntermediateOutputPath)$(TargetFileName)&quot;" />
     <RemoveDir Directories="$(ObfuscarOutDir)" />
     <Exec Command="&quot;$(ObfuscarExe)&quot; &quot;$(ProjectDir)obfuscar.xml&quot;" WorkingDirectory="$(ProjectDir)" />
     <Copy SourceFiles="$(ObfuscarOutDir)FASTIMATE.exe" DestinationFolder="$(TargetDir)" />

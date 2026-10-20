@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -999,7 +999,7 @@ namespace FASTIMATE
                 foreach (int col in new[] { ColNaziv, ColIdent, ColOsnovniNaziv, ColKolicina, ColDebljina, ColFinish,
                                             ColPlastifikacija, ColVijci, ColMatice, ColMaterijal, ColPovrsinskaZastita })
                 {
-                    buffer.LoadColumn(sheet, col);
+                    buffer.LoadColumn((object)sheet, col);
                 }
 
                 foreach (RowData row in rows)
@@ -1044,9 +1044,9 @@ namespace FASTIMATE
                 catch { }
                 try { sheet.Range[$"EH{FirstRow}:EH{gpRow}"].NumberFormat = "General"; } catch { }
 
-                buffer.Flush(sheet);
+                buffer.Flush((object)sheet);
 
-                RestorePlastifikacijaFormula(sheet, gpRow);
+                RestorePlastifikacijaFormula((object)sheet, gpRow);
 
                 try { sheet.Range[$"EH{FirstRow}:EH{gpRow}"].Interior.ColorIndex = -4142; } catch { }
                 foreach (int r in highlightRows)
@@ -1054,7 +1054,7 @@ namespace FASTIMATE
                     try { sheet.Cells[r, ColKFaktor].Interior.Color = KFaktorOdstupanjeBoja; } catch { }
                 }
 
-                PostaviValidaciju(sheet);
+                PostaviValidaciju((object)sheet);
 
                 try { excelApp.Calculation = -4105; } catch { } // xlCalculationAutomatic
                 try { excelApp.EnableEvents = true; } catch { }
@@ -1558,12 +1558,12 @@ namespace FASTIMATE
                     {
                         if (run.Count > 0 && cell.Key != run[run.Count - 1].Key + 1)
                         {
-                            WriteRun(sheet, letter, run);
+                            WriteRun((object)sheet, letter, run);
                             run.Clear();
                         }
                         run.Add(cell);
                     }
-                    if (run.Count > 0) WriteRun(sheet, letter, run);
+                    if (run.Count > 0) WriteRun((object)sheet, letter, run);
                 }
                 pending.Clear();
             }
