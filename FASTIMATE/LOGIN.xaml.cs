@@ -30,11 +30,13 @@ namespace FASTIMATE
             string username = txtUsername.Text != null ? txtUsername.Text.Trim() : "";
             string password = txtPasw.Password;
 
-            bool isAdmin = username.Equals("admin", StringComparison.OrdinalIgnoreCase) && password == "mtp\"=\"&!";
-            bool isUser = username.Equals("pims", StringComparison.OrdinalIgnoreCase) && password == "mtp2026";
+            UserManager.LoginError loginError;
+            AppUser user = UserManager.Authenticate(username, password, out loginError);
 
-            if (isAdmin || isUser)
+            if (user != null)
             {
+                bool isAdmin = user.IsAdmin;
+
                 if (!isAdmin)
                 {
                     var licInfo = LicenseManager.CheckLicense();
@@ -55,18 +57,29 @@ namespace FASTIMATE
 
                 lblError.Visibility = Visibility.Collapsed;
 
-                string displayUser = isAdmin ? "admin" : "Dino Bratić";
-                MainNovi mainWindow = new MainNovi(displayUser, isAdmin);
+                MainNovi mainWindow = new MainNovi(user.PunoIme, isAdmin, user.Username);
                 mainWindow.Show();
 
                 this.Close();
             }
             else
             {
-                lblError.Text = "Pogrešno korisničko ime ili lozinka!";
+                lblError.Text = UserManager.LoginErrorMessage(loginError, username);
                 lblError.Visibility = Visibility.Visible;
-                txtPasw.Clear();
-                txtPasw.Focus();
+
+                if (loginError == UserManager.LoginError.PraznoKorisnickoIme
+                    || loginError == UserManager.LoginError.NepoznatKorisnik
+                    || loginError == UserManager.LoginError.Deaktiviran)
+                {
+                    txtPasw.Clear();
+                    txtUsername.Focus();
+                    txtUsername.SelectAll();
+                }
+                else
+                {
+                    txtPasw.Clear();
+                    txtPasw.Focus();
+                }
             }
         }
 

@@ -193,6 +193,10 @@
                                 Style="{StaticResource SidebarButtonStyle}" 
                                 Click="BtnLicenca_Click"/>
 
+                        <Button x:Name="btnKorisnici" Content="Korisnici"
+                                Style="{StaticResource SidebarButtonStyle}"
+                                Click="BtnKorisnici_Click"/>
+
                         <Button x:Name="btnPomoc" Content="Pomoć" 
                                 Style="{StaticResource SidebarButtonStyle}" 
                                 Click="BtnPomoc_Click"/>
@@ -218,7 +222,7 @@
                     <DockPanel Grid.Row="0" Margin="15,12,20,6">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
                             <TextBlock Text="Logovani korisnik: " Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-                            <TextBlock x:Name="labelkorisnik" Text="Dino Bratić"
+                            <TextBlock x:Name="labelkorisnik" Text=""
                                        FontStyle="Italic" Foreground="#90CAF9" FontWeight="Normal" FontSize="12"/>
                         </StackPanel>
                     </DockPanel>

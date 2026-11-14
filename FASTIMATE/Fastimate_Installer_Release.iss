@@ -31,10 +31,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[Dirs]
+; Zajednički folder za podatke (svi RDP korisnici smiju mijenjati fajlove)
+Name: "{commonappdata}\FASTIMATE"; Permissions: users-modify
+
 [Files]
 ; 1. Kopiranje SVIH Release fajlova i biblioteka (FASTIMATE.exe sa ugrađenim PDF-om, PdfSharp.dll, config)
 ; Putanja je relativna u odnosu na ovaj .iss fajl – prije pravljenja instalacije uraditi Release build (obfuscirani exe)
 Source: "bin\Release\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 2. Početni korisnici (admin sa hashovanom lozinkom). Ne prepisuje postojeći fajl i ne briše se pri deinstalaciji.
+Source: "Installer\fastimate_u.txt"; DestDir: "{commonappdata}\FASTIMATE"; Flags: onlyifdoesntexist uninsneveruninstall; Permissions: users-modify
 
 [Icons]
 ; Prečica na Desktopu i u Start meniju

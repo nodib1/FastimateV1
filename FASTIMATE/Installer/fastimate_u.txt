@@ -1,0 +1,4 @@
+﻿# FASTIMATE korisnici - ne uređivati ručno (fajl je potpisan, ručna izmjena blokira prijavu).
+# Username;Ime;Prezime;IsAdmin;Aktivan;Salt;PasswordHash
+admin;admin;;1;1;T7fl/etIuvEgvfCI6HmoHw==;NR5mgvNkVie1ZnFrN9bGU+0EU8JVpfzMetfeiWjW9pk=
+#SIG;vEMztkN8yqDpbQ1kVnSKjcMIffyTtEb6V7UQrOTl3oM=

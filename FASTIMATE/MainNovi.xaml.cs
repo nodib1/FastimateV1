@@ -24,23 +24,24 @@ namespace FASTIMATE
     {
         public bool IsAdmin { get; private set; } = false;
 
-        public MainNovi(string username = "admin", bool isAdmin = true)
+        /// <summary>Ime i prezime logovanog korisnika (ide u Excel/SolidWorks).</summary>
+        public string PunoIme { get; private set; }
+
+        /// <summary>Korisničko ime logovanog korisnika.</summary>
+        public string LoginUsername { get; private set; }
+
+        public MainNovi(string punoIme = "admin", bool isAdmin = true, string loginUsername = "admin")
         {
             InitializeComponent();
             IsAdmin = isAdmin;
+            PunoIme = punoIme;
+            LoginUsername = loginUsername;
 
-            if (isAdmin)
-            {
-                labelkorisnik.Text = username + " (ADMIN PANEL)";
-                if (btnUvozSablon != null) btnUvozSablon.Visibility = Visibility.Visible;
-                if (btnLicenca != null) btnLicenca.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                labelkorisnik.Text = username;
-                if (btnUvozSablon != null) btnUvozSablon.Visibility = Visibility.Collapsed;
-                if (btnLicenca != null) btnLicenca.Visibility = Visibility.Collapsed;
-            }
+            Visibility adminOnly = isAdmin ? Visibility.Visible : Visibility.Collapsed;
+            labelkorisnik.Text = isAdmin ? punoIme + " (ADMIN PANEL)" : punoIme;
+            if (btnUvozSablon != null) btnUvozSablon.Visibility = adminOnly;
+            if (btnLicenca != null) btnLicenca.Visibility = adminOnly;
+            if (btnKorisnici != null) btnKorisnici.Visibility = adminOnly;
 
             LoadHomeView();
         }
@@ -57,6 +58,7 @@ namespace FASTIMATE
             btnIzvozDokumentacije.Style = (Style)FindResource("SidebarButtonStyle");
             btnUvozSablon.Style = (Style)FindResource("SidebarButtonStyle");
             btnLicenca.Style = (Style)FindResource("SidebarButtonStyle");
+            btnKorisnici.Style = (Style)FindResource("SidebarButtonStyle");
             btnPomoc.Style = (Style)FindResource("SidebarButtonStyle");
 
             if (activeButton != null)
@@ -108,7 +110,7 @@ namespace FASTIMATE
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch
             };
-            homeView.sLogovaniKorisnik = labelkorisnik.Text;
+            homeView.sLogovaniKorisnik = PunoIme;
 
             var container = new Grid();
             container.Children.Add(homeView);
@@ -195,6 +197,20 @@ namespace FASTIMATE
         private void BtnLicenca_Click(object sender, RoutedEventArgs e)
         {
             NavigateToLicenca();
+        }
+
+        private void BtnKorisnici_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsAdmin) return;
+            SetActiveSidebarButton(btnKorisnici);
+
+            var container = new Grid();
+            container.Children.Add(new KorisniciView(LoginUsername)
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            });
+            MainContent.Content = container;
         }
 
 
