@@ -177,6 +177,9 @@ namespace FASTIMATE
         public int Quantity { get; set; } = 1;
 
         public string Icon { get { return IsAssembly ? "▣" : "▢"; } }
+
+        /// <summary>Samo komponente sa unesenim Identom mogu se selektovati u stablu (ostale su sive).</summary>
+        public bool HasIdent { get { return Data != null && !string.IsNullOrWhiteSpace(Data.Ident); } }
         public string QuantityText { get { return Quantity > 1 ? "× " + Quantity : ""; } }
 
         public bool IsExpanded { get { return _isExpanded; } set { _isExpanded = value; OnChanged(); } }
@@ -184,7 +187,7 @@ namespace FASTIMATE
 
         public bool Matches(string text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return false;
+            if (string.IsNullOrWhiteSpace(text) || !HasIdent) return false; // sive (bez Identa) se ne mogu odabrati
             return Has(DisplayName, text) || (Data != null && (Has(Data.Ident, text) || Has(Data.Oznaka, text) || Has(Data.Naziv, text)));
         }
 

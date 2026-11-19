@@ -262,8 +262,14 @@ namespace FASTIMATE
 
                 FasterpNode toSelect = null;
                 if (selectKey != null)
-                    toSelect = _root.SelfAndDescendants().FirstOrDefault(n => n.Key == selectKey);
-                SelectNode(toSelect ?? _root);
+                    toSelect = _root.SelfAndDescendants().FirstOrDefault(n => n.Key == selectKey && n.HasIdent);
+                // inače prva komponenta (redom u stablu) koja ima Ident
+                if (toSelect == null)
+                    toSelect = _root.SelfAndDescendants().FirstOrDefault(n => n.HasIdent);
+                if (toSelect != null)
+                    SelectNode(toSelect);
+                else
+                    ClearView();
 
                 int count = _root.SelfAndDescendants().Count() - 1;
                 SetStatus("Učitano iz SolidWorksa: " + count + " komponenti (" + DateTime.Now.ToString("HH:mm:ss") + ").");
@@ -301,13 +307,57 @@ namespace FASTIMATE
             if (e.OriginalSource is TreeViewItem item) item.BringIntoView();
         }
 
+        /// <summary>Klik na sivu komponentu (bez Identa) ne selektuje je; strelica za otvaranje i dalje radi.</summary>
+        private void TreeItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var source = e.OriginalSource as DependencyObject;
+            if (FindAncestor<TreeViewItem>(source) != sender) return; // događaj stiže i do nadređenih stavki
+            if (FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(source) != null) return; // strelica
+
+            if (sender is TreeViewItem item && item.DataContext is FasterpNode node && !node.HasIdent)
+                e.Handled = true;
+        }
+
+        private static T FindAncestor<T>(DependencyObject d) where T : DependencyObject
+        {
+            while (d != null && !(d is T))
+                d = d is System.Windows.Media.Visual || d is System.Windows.Media.Media3D.Visual3D
+                    ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                    : LogicalTreeHelper.GetParent(d);
+            return d as T;
+        }
+
+        private void ClearView()
+        {
+            _selected = null;
+            foreach (var r in _solidRows) r.PropertyChanged -= SolidRow_Changed;
+            foreach (var r in _odabranoRows) r.PropertyChanged -= SolidRow_Changed;
+            foreach (var r in _erpRows) r.PropertyChanged -= ErpRow_Changed;
+            _solidRows.Clear();
+            _odabranoRows.Clear();
+            _erpRows.Clear();
+            _erpKey = "";
+            _solidDirty = false;
+            _erpDirty = false;
+        }
+
+        // ------------------------------------------------------------------ tabovi
+
+        private void Tab_Checked(object sender, RoutedEventArgs e)
+        {
+            if (panelStruktura == null || panelTehnologija == null) return; // tokom InitializeComponent
+            bool struktura = tabStruktura.IsChecked == true;
+            panelStruktura.Visibility = struktura ? Visibility.Visible : Visibility.Collapsed;
+            panelTehnologija.Visibility = struktura ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         private void TreeSolid_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             if (_suppressSelection) return;
             var node = e.NewValue as FasterpNode;
             if (node == null || node == _selected) return;
 
-            if (!ConfirmDiscard())
+            if (!node.HasIdent || !ConfirmDiscard())
             {
                 // vrati prethodni odabir
                 _suppressSelection = true;
