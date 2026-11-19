@@ -185,7 +185,11 @@
                                 Style="{StaticResource SidebarButtonStyle}" 
                                 Click="BtnIzvozDokumentacije_Click"/>
 
-                        <Button x:Name="btnUvozSablon" Content="Import" 
+                        <Button x:Name="btnFasterp" Content="FastERP"
+                                Style="{StaticResource SidebarButtonStyle}"
+                                Click="BtnFasterp_Click"/>
+
+                        <Button x:Name="btnUvozSablon" Content="Import"
                                 Style="{StaticResource SidebarButtonStyle}" 
                                 Click="BtnUvozSablon_Click"/>
 

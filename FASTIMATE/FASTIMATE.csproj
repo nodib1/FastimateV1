@@ -113,6 +113,15 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="FasterpWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="FasterpWindow.xaml.cs">
+      <DependentUpon>FasterpWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="FasterpData.cs" />
+    <Compile Include="UcitavanjeProzor.cs" />
     <Compile Include="KorisniciView.xaml.cs">
       <DependentUpon>KorisniciView.xaml</DependentUpon>
     </Compile>

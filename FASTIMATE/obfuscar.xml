@@ -33,11 +33,15 @@
     <SkipType name="FASTIMATE.LicencaView" />
     <SkipType name="FASTIMATE.LicenseWarningWindow" />
     <SkipType name="FASTIMATE.KorisniciView" />
+    <SkipType name="FASTIMATE.FasterpWindow" />
 
     <!-- Klase prikazane u tabelama (Binding po imenu propertyja) -->
     <SkipType name="FASTIMATE.ErpFastenerItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
     <SkipType name="FASTIMATE.KFactorRuleItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
     <SkipType name="FASTIMATE.SheetMetalRawItem" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
     <SkipType name="FASTIMATE.AppUser" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+    <SkipType name="FASTIMATE.FasterpRow" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+    <SkipType name="FASTIMATE.FasterpNode" skipProperties="true" skipEvents="true" skipMethods="true" skipFields="true" />
+    <SkipType name="FASTIMATE.FasterpStatus" skipFields="true" />
   </Module>
 </Obfuscator>

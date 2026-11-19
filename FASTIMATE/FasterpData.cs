@@ -1,0 +1,698 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
+using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
+
+namespace FASTIMATE
+{
+    /// <summary>Status reda nakon poređenja SolidWorks i ERP strukture (vrijednost = kolona N).</summary>
+    public enum FasterpStatus
+    {
+        NemaPromjene = 0,
+        Promijenjen = 1,
+        Novi = 2,
+        Izbrisan = 3
+    }
+
+    /// <summary>Imena custom propertyja u SolidWorksu koje čita FASTERP.</summary>
+    public static class FasterpProps
+    {
+        public const string Ident = "GS_IDENT";
+        public const string Naziv = "GS_Osnovni_naziv";
+        public const string Status = "GSStatus";
+        public const string JedinicaMjere = "GS_Jedinica_mjere";
+        public const string UpravljackiCentar = "GSUpravljacki_centar";
+        public const string Veza = "GS_Veza";
+
+        public const string VezaFantom = "F Fantom";
+        public const string VezaNormalna = "1 Normalna";
+    }
+
+    /// <summary>Jedan red tabele (SolidWorks info ili ERP info).</summary>
+    public class FasterpRow : INotifyPropertyChanged
+    {
+        private int _br;
+        private string _poz = "";
+        private string _veza = "";
+        private string _ident = "";
+        private string _oznaka = "";
+        private string _tip = "";
+        private int _tipId;
+        private string _naziv = "";
+        private decimal _kolicina;
+        private string _jm = "";
+        private string _za = "";
+        private int _zaId;
+        private string _napomena = "";
+        private FasterpStatus _status;
+
+        public int N { get { return (int)_status; } }
+        public int Br { get { return _br; } set { _br = value; OnChanged(); } }
+        public string Poz { get { return _poz; } set { _poz = value ?? ""; OnChanged(); } }
+        public string Veza { get { return _veza; } set { _veza = value ?? ""; OnChanged(); } }
+        public string Ident { get { return _ident; } set { _ident = (value ?? "").Trim(); OnChanged(); } }
+        public string Oznaka { get { return _oznaka; } set { _oznaka = value ?? ""; OnChanged(); } }
+
+        /// <summary>Naziv statusa kako piše u SolidWorksu (npr. "U razvoju"); broj je u TipId.</summary>
+        public string Tip
+        {
+            get { return _tip; }
+            set
+            {
+                _tip = value ?? "";
+                _tipId = FasterpSifarnik.FindId(FasterpSifarnik.GrupaTip, _tip);
+                OnChanged();
+                OnChanged(nameof(TipId));
+            }
+        }
+        public int TipId { get { return _tipId; } set { _tipId = value; OnChanged(); } }
+
+        public string Naziv { get { return _naziv; } set { _naziv = value ?? ""; OnChanged(); } }
+        public decimal Kolicina { get { return _kolicina; } set { _kolicina = value; OnChanged(); } }
+        public string JM { get { return _jm; } set { _jm = value ?? ""; OnChanged(); } }
+
+        /// <summary>Upravljački centar kako piše u SolidWorksu (npr. "PMPR"); broj je u ZaId.</summary>
+        public string ZA
+        {
+            get { return _za; }
+            set
+            {
+                _za = value ?? "";
+                _zaId = FasterpSifarnik.FindId(FasterpSifarnik.GrupaZa, _za);
+                OnChanged();
+                OnChanged(nameof(ZaId));
+            }
+        }
+        public int ZaId { get { return _zaId; } set { _zaId = value; OnChanged(); } }
+
+        public string Napomena { get { return _napomena; } set { _napomena = value ?? ""; OnChanged(); } }
+
+        public FasterpStatus Status
+        {
+            get { return _status; }
+            set { _status = value; OnChanged(); OnChanged(nameof(N)); }
+        }
+
+        // Pozadinski podaci (ne prikazuju se) – veza prema SolidWorks modelu
+        public ModelDoc2 Model { get; set; }
+        public string Configuration { get; set; } = "";
+        public bool IsAssembly { get; set; }
+
+        /// <summary>Ključ za poređenje: Ident, a ako ga nema onda Oznaka.</summary>
+        public string Key
+        {
+            get { return !string.IsNullOrWhiteSpace(Ident) ? Ident.Trim().ToUpperInvariant() : "#" + (Oznaka ?? "").Trim().ToUpperInvariant(); }
+        }
+
+        public string DefaultVeza { get { return IsAssembly ? FasterpProps.VezaFantom : FasterpProps.VezaNormalna; } }
+
+        /// <summary>Upisuje nove nazive (TIP/ZA) u šifarnik i postavlja njihove brojeve.</summary>
+        public void EnsureIds()
+        {
+            if (!string.IsNullOrWhiteSpace(_tip)) TipId = FasterpSifarnik.GetId(FasterpSifarnik.GrupaTip, _tip);
+            if (!string.IsNullOrWhiteSpace(_za)) ZaId = FasterpSifarnik.GetId(FasterpSifarnik.GrupaZa, _za);
+        }
+
+        public FasterpRow CloneData()
+        {
+            var r = new FasterpRow();
+            r.CopyDataFrom(this, true);
+            return r;
+        }
+
+        /// <summary>Kopira podatke (bez veze na model). withStructure = i Br/Poz/Ident/Oznaka/Količina.</summary>
+        public void CopyDataFrom(FasterpRow s, bool withStructure)
+        {
+            if (withStructure)
+            {
+                _br = s._br; _poz = s._poz; _ident = s._ident; _oznaka = s._oznaka; _kolicina = s._kolicina;
+            }
+            _veza = s._veza; _tip = s._tip; _tipId = s._tipId; _naziv = s._naziv;
+            _jm = s._jm; _za = s._za; _zaId = s._zaId; _napomena = s._napomena;
+            OnChanged(string.Empty);
+        }
+
+        /// <summary>Da li se podaci razlikuju (Ident/Key je već isti).</summary>
+        public bool DiffersFrom(FasterpRow o)
+        {
+            return !Eq(Veza, o.Veza) || !Eq(Oznaka, o.Oznaka) || !Eq(Tip, o.Tip) || !Eq(Naziv, o.Naziv)
+                || Kolicina != o.Kolicina || !Eq(JM, o.JM) || !Eq(ZA, o.ZA);
+        }
+
+        private static bool Eq(string a, string b)
+        {
+            return string.Equals((a ?? "").Trim(), (b ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    /// <summary>Čvor stabla SolidWorks strukture.</summary>
+    public class FasterpNode : INotifyPropertyChanged
+    {
+        private bool _isExpanded;
+        private bool _isSelected;
+
+        public string Key { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public FasterpRow Data { get; set; }
+        public string FilePath { get; set; } = "";
+        public bool IsAssembly { get; set; }
+        public bool IsSuppressed { get; set; }
+        public FasterpNode Parent { get; set; }
+        public ObservableCollection<FasterpNode> Children { get; } = new ObservableCollection<FasterpNode>();
+
+        /// <summary>Koliko puta se isti fajl (SW-File Name) pojavljuje direktno ispod nadređenog sklopa.</summary>
+        public int Quantity { get; set; } = 1;
+
+        public string Icon { get { return IsAssembly ? "▣" : "▢"; } }
+        public string QuantityText { get { return Quantity > 1 ? "× " + Quantity : ""; } }
+
+        public bool IsExpanded { get { return _isExpanded; } set { _isExpanded = value; OnChanged(); } }
+        public bool IsSelected { get { return _isSelected; } set { _isSelected = value; OnChanged(); } }
+
+        public bool Matches(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            return Has(DisplayName, text) || (Data != null && (Has(Data.Ident, text) || Has(Data.Oznaka, text) || Has(Data.Naziv, text)));
+        }
+
+        private static bool Has(string s, string t)
+        {
+            return !string.IsNullOrEmpty(s) && s.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public IEnumerable<FasterpNode> SelfAndDescendants()
+        {
+            yield return this;
+            foreach (var c in Children)
+                foreach (var d in c.SelfAndDescendants())
+                    yield return d;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void OnChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    /// <summary>
+    /// Šifarnici za kolone koje u SolidWorksu imaju tekst, a u tabeli se pozadinski čuva broj
+    /// (TIP = GSStatus, ZA = GSUpravljacki_centar). Nova vrijednost iz SolidWorksa se automatski dodaje sa sljedećim brojem.
+    /// Fajl: C:\ProgramData\FASTIMATE\fasterp_sifarnici.txt
+    /// </summary>
+    public static class FasterpSifarnik
+    {
+        public const string GrupaTip = "GSStatus";
+        public const string GrupaZa = "GSUpravljacki_centar";
+
+        private static Dictionary<string, List<KeyValuePair<int, string>>> _data;
+        private static readonly object _lock = new object();
+
+        private static string FilePath { get { return Path.Combine(AppPaths.GetDbDirectory(), "fasterp_sifarnici.txt"); } }
+
+        private static void EnsureLoaded()
+        {
+            if (_data != null) return;
+            _data = new Dictionary<string, List<KeyValuePair<int, string>>>(StringComparer.OrdinalIgnoreCase);
+            bool loaded = false;
+            try
+            {
+                if (File.Exists(FilePath))
+                {
+                    foreach (string line in File.ReadAllLines(FilePath, Encoding.UTF8))
+                    {
+                        string[] p = line.Split('\t');
+                        if (p.Length < 3 || !int.TryParse(p[1], out int id)) continue;
+                        List(p[0]).Add(new KeyValuePair<int, string>(id, p[2]));
+                        loaded = true;
+                    }
+                }
+            }
+            catch { }
+
+            if (!loaded)
+            {
+                // Početne vrijednosti prema Custom Properties u SolidWorksu
+                var tip = List(GrupaTip);
+                tip.Add(new KeyValuePair<int, string>(1, "U razvoju"));
+                tip.Add(new KeyValuePair<int, string>(2, "U tehnologiji"));
+                tip.Add(new KeyValuePair<int, string>(3, "Aktivan"));
+                tip.Add(new KeyValuePair<int, string>(4, "Aktivan / U razvoju"));
+                tip.Add(new KeyValuePair<int, string>(5, "Izvan upotrebe"));
+                var za = List(GrupaZa);
+                za.Add(new KeyValuePair<int, string>(1, "PMPR"));
+                za.Add(new KeyValuePair<int, string>(2, "NMPR"));
+                Save();
+            }
+        }
+
+        private static List<KeyValuePair<int, string>> List(string group)
+        {
+            if (!_data.TryGetValue(group, out var list))
+            {
+                list = new List<KeyValuePair<int, string>>();
+                _data[group] = list;
+            }
+            return list;
+        }
+
+        private static void Save()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                foreach (var g in _data)
+                    foreach (var kv in g.Value)
+                        sb.Append(g.Key).Append('\t').Append(kv.Key).Append('\t').Append(kv.Value).AppendLine();
+                File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
+                AppPaths.GrantUsersModify(FilePath, false);
+            }
+            catch { }
+        }
+
+        /// <summary>Vrijednost iz SolidWorksa pretvara u naziv za prikaz (ako je broj, traži se naziv u šifarniku).</summary>
+        public static string ToNaziv(string group, string value)
+        {
+            value = (value ?? "").Trim();
+            if (value.Length == 0) return "";
+            lock (_lock)
+            {
+                EnsureLoaded();
+                if (int.TryParse(value, out int id))
+                {
+                    foreach (var kv in List(group))
+                        if (kv.Key == id) return kv.Value;
+                }
+                GetIdInternal(group, value); // nova vrijednost -> dodaje se u šifarnik
+                return value;
+            }
+        }
+
+        /// <summary>Broj (ID) za naziv bez dodavanja u šifarnik; 0 ako ne postoji.</summary>
+        public static int FindId(string group, string naziv)
+        {
+            naziv = (naziv ?? "").Trim();
+            if (naziv.Length == 0) return 0;
+            lock (_lock)
+            {
+                EnsureLoaded();
+                foreach (var kv in List(group))
+                    if (string.Equals(kv.Value, naziv, StringComparison.OrdinalIgnoreCase)) return kv.Key;
+                int.TryParse(naziv, out int asNumber);
+                return asNumber;
+            }
+        }
+
+        /// <summary>Broj (ID) za naziv; nepoznati naziv se dodaje sa sljedećim slobodnim brojem.</summary>
+        public static int GetId(string group, string naziv)
+        {
+            naziv = (naziv ?? "").Trim();
+            if (naziv.Length == 0) return 0;
+            lock (_lock)
+            {
+                EnsureLoaded();
+                return GetIdInternal(group, naziv);
+            }
+        }
+
+        private static int GetIdInternal(string group, string naziv)
+        {
+            var list = List(group);
+            foreach (var kv in list)
+                if (string.Equals(kv.Value, naziv, StringComparison.OrdinalIgnoreCase)) return kv.Key;
+            if (int.TryParse(naziv, out int asNumber)) return asNumber;
+            int next = list.Count == 0 ? 1 : list.Max(k => k.Key) + 1;
+            list.Add(new KeyValuePair<int, string>(next, naziv));
+            Save();
+            return next;
+        }
+
+        public static List<string> Nazivi(string group)
+        {
+            lock (_lock)
+            {
+                EnsureLoaded();
+                return List(group).OrderBy(k => k.Key).Select(k => k.Value).ToList();
+            }
+        }
+    }
+
+    /// <summary>
+    /// ERP strane podaci (struktura po nadređenom identu).
+    /// Dok ne postoji direktna veza na ERP bazu, struktura se čuva u C:\ProgramData\FASTIMATE\fasterp_erp_struktura.txt
+    /// </summary>
+    public static class FasterpErpStore
+    {
+        private static string FilePath { get { return Path.Combine(AppPaths.GetDbDirectory(), "fasterp_erp_struktura.txt"); } }
+
+        private static Dictionary<string, List<string[]>> ReadAll()
+        {
+            var all = new Dictionary<string, List<string[]>>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!File.Exists(FilePath)) return all;
+                foreach (string line in File.ReadAllLines(FilePath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    string[] p = line.Split('\t');
+                    if (p.Length < 14) continue;
+                    if (!all.TryGetValue(p[0], out var list)) { list = new List<string[]>(); all[p[0]] = list; }
+                    list.Add(p);
+                }
+            }
+            catch { }
+            return all;
+        }
+
+        public static List<FasterpRow> Load(string parentKey)
+        {
+            var result = new List<FasterpRow>();
+            if (string.IsNullOrWhiteSpace(parentKey)) return result;
+            if (!ReadAll().TryGetValue(parentKey.Trim(), out var lines)) return result;
+            foreach (var p in lines)
+            {
+                var r = new FasterpRow();
+                int.TryParse(p[1], out int br);
+                r.Br = br;
+                r.Poz = p[2];
+                r.Veza = p[3];
+                r.Ident = p[4];
+                r.Oznaka = p[5];
+                r.Tip = p[7];
+                if (int.TryParse(p[6], out int tipId) && tipId > 0) r.TipId = tipId;
+                r.Naziv = p[8];
+                r.Kolicina = FasterpReader.ParseDecimal(p[9]);
+                r.JM = p[10];
+                r.ZA = p[12];
+                if (int.TryParse(p[11], out int zaId) && zaId > 0) r.ZaId = zaId;
+                r.Napomena = p[13];
+                result.Add(r);
+            }
+            return result;
+        }
+
+        public static void Save(string parentKey, IEnumerable<FasterpRow> rows)
+        {
+            parentKey = (parentKey ?? "").Trim();
+            if (parentKey.Length == 0) throw new InvalidOperationException("Odabrani sklop nema IDENT ni oznaku.");
+
+            var all = ReadAll();
+            all[parentKey] = rows.Select(r => new[]
+            {
+                parentKey, r.Br.ToString(CultureInfo.InvariantCulture), Clean(r.Poz), Clean(r.Veza), Clean(r.Ident), Clean(r.Oznaka),
+                r.TipId.ToString(CultureInfo.InvariantCulture), Clean(r.Tip), Clean(r.Naziv),
+                r.Kolicina.ToString(CultureInfo.InvariantCulture), Clean(r.JM),
+                r.ZaId.ToString(CultureInfo.InvariantCulture), Clean(r.ZA), Clean(r.Napomena)
+            }).ToList();
+
+            var sb = new StringBuilder();
+            foreach (var g in all)
+                foreach (var p in g.Value)
+                    sb.AppendLine(string.Join("\t", p));
+            File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
+            AppPaths.GrantUsersModify(FilePath, false);
+        }
+
+        private static string Clean(string s)
+        {
+            return (s ?? "").Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+        }
+    }
+
+    /// <summary>Čitanje i upis SolidWorks strukture i custom propertyja.</summary>
+    public static class FasterpReader
+    {
+        public static decimal ParseDecimal(string s)
+        {
+            s = (s ?? "").Trim().Replace(',', '.');
+            decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal d);
+            return d;
+        }
+
+        /// <summary>Gradi stablo za aktivni dokument. Vraća null ako nema otvorenog dokumenta.</summary>
+        public static FasterpNode BuildTree(SldWorks swApp)
+        {
+            ModelDoc2 model = swApp?.ActiveDoc as ModelDoc2;
+            if (model == null) return null;
+
+            var cache = new Dictionary<string, FasterpRow>(StringComparer.OrdinalIgnoreCase);
+            string path = model.GetPathName() ?? "";
+            string conf = "";
+            try { conf = model.ConfigurationManager?.ActiveConfiguration?.Name ?? ""; } catch { }
+            bool isAsm = model.GetType() == (int)swDocumentTypes_e.swDocASSEMBLY;
+
+            var root = new FasterpNode
+            {
+                Key = "",
+                FilePath = path,
+                IsAssembly = isAsm,
+                DisplayName = !string.IsNullOrWhiteSpace(path) ? Path.GetFileNameWithoutExtension(path) : model.GetTitle(),
+                IsExpanded = true
+            };
+            root.Data = ReadRow(model, conf, path, isAsm, cache);
+
+            if (isAsm)
+            {
+                Component2 rootComp = null;
+                try { rootComp = model.ConfigurationManager.ActiveConfiguration.GetRootComponent3(true) as Component2; } catch { }
+                if (rootComp != null) AddChildren(root, rootComp, cache, model.FirstFeature() as Feature);
+            }
+            return root;
+        }
+
+        /// <summary>
+        /// Djeca komponente redoslijedom kao u SolidWorks FeatureManager stablu.
+        /// GetChildren vraća komponente proizvoljnim redom, pa se poredaju po redoslijedu "Reference" featurea;
+        /// komponente koje nisu nađene u featureima (npr. u paternima) idu na kraj, originalnim redom.
+        /// </summary>
+        private static List<Component2> OrderedChildren(Component2 comp, Feature firstFeature)
+        {
+            var children = new List<Component2>();
+            object v = null;
+            try { v = comp.GetChildren(); } catch { }
+            if (v is Array arr)
+                foreach (object o in arr)
+                    if (o is Component2 c) children.Add(c);
+            if (children.Count < 2) return children;
+
+            var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                int i = 0;
+                for (Feature f = firstFeature; f != null; f = f.GetNextFeature() as Feature)
+                {
+                    if (f.GetTypeName2() != "Reference") continue;
+                    string n = f.Name ?? "";
+                    if (!order.ContainsKey(n)) order[n] = i++;
+                }
+            }
+            catch { }
+            if (order.Count == 0) return children;
+
+            return children
+                .Select((c, idx) => new { c, idx, pos = OrderOf(order, c) })
+                .OrderBy(x => x.pos)
+                .ThenBy(x => x.idx)
+                .Select(x => x.c)
+                .ToList();
+        }
+
+        private static int OrderOf(Dictionary<string, int> order, Component2 c)
+        {
+            string name2 = "";
+            try { name2 = c.Name2 ?? ""; } catch { }
+            string shortName = name2.Contains("/") ? name2.Substring(name2.LastIndexOf('/') + 1) : name2;
+            return order.TryGetValue(shortName, out int pos) ? pos : int.MaxValue;
+        }
+
+        private static void AddChildren(FasterpNode parent, Component2 comp, Dictionary<string, FasterpRow> cache, Feature firstFeature)
+        {
+            foreach (Component2 child in OrderedChildren(comp, firstFeature))
+            {
+                bool suppressed = false;
+                try { suppressed = child.IsSuppressed(); } catch { }
+                if (suppressed) continue;
+                try { if (child.ExcludeFromBOM) continue; } catch { }
+
+                string name2 = "";
+                try { name2 = child.Name2 ?? ""; } catch { }
+                string shortName = name2.Contains("/") ? name2.Substring(name2.LastIndexOf('/') + 1) : name2;
+
+                string path = "";
+                try { path = child.GetPathName() ?? ""; } catch { }
+                string conf = "";
+                try { conf = child.ReferencedConfiguration ?? ""; } catch { }
+
+                ModelDoc2 m = null;
+                try { m = child.GetModelDoc2() as ModelDoc2; } catch { }
+
+                bool isAsm = m != null
+                    ? m.GetType() == (int)swDocumentTypes_e.swDocASSEMBLY
+                    : path.EndsWith(".sldasm", StringComparison.OrdinalIgnoreCase);
+
+                // U stablu se prikazuje SW-File Name; iste fajlove pod istim sklopom spaja jedan čvor (količina)
+                string fileName = !string.IsNullOrWhiteSpace(path) ? Path.GetFileNameWithoutExtension(path) : shortName;
+                var existing = parent.Children.FirstOrDefault(n =>
+                    string.Equals(n.FilePath, path, StringComparison.OrdinalIgnoreCase) &&
+                    (path.Length > 0 || n.DisplayName == fileName));
+                if (existing != null)
+                {
+                    existing.Quantity++;
+                    if (existing.Data?.Model == null && m != null)
+                        existing.Data = ReadRow(m, conf, path, isAsm, cache);
+                    continue;
+                }
+
+                var node = new FasterpNode
+                {
+                    Key = (parent.Key.Length > 0 ? parent.Key + "/" : "") + fileName,
+                    DisplayName = fileName,
+                    FilePath = path,
+                    IsAssembly = isAsm,
+                    Parent = parent,
+                    Quantity = 1
+                };
+                node.Data = ReadRow(m, conf, path, isAsm, cache);
+                parent.Children.Add(node);
+
+                if (isAsm)
+                {
+                    Feature first = null;
+                    try { first = child.FirstFeature() as Feature; } catch { }
+                    AddChildren(node, child, cache, first);
+                }
+            }
+        }
+
+        private static FasterpRow ReadRow(ModelDoc2 m, string conf, string path, bool isAsm, Dictionary<string, FasterpRow> cache)
+        {
+            string key = path + "|" + conf;
+            if (cache.TryGetValue(key, out var cached) && (cached.Model != null || m == null)) return cached;
+
+            var r = new FasterpRow
+            {
+                Model = m,
+                Configuration = conf ?? "",
+                IsAssembly = isAsm,
+                Oznaka = !string.IsNullOrWhiteSpace(path) ? Path.GetFileNameWithoutExtension(path) : (m?.GetTitle() ?? "")
+            };
+
+            if (m != null)
+            {
+                r.Ident = GetProp(m, conf, FasterpProps.Ident);
+                r.Naziv = GetProp(m, conf, FasterpProps.Naziv);
+                r.Tip = FasterpSifarnik.ToNaziv(FasterpSifarnik.GrupaTip, GetProp(m, conf, FasterpProps.Status));
+                r.JM = GetProp(m, conf, FasterpProps.JedinicaMjere);
+                r.ZA = FasterpSifarnik.ToNaziv(FasterpSifarnik.GrupaZa, GetProp(m, conf, FasterpProps.UpravljackiCentar));
+                string veza = GetProp(m, conf, FasterpProps.Veza);
+                r.Veza = string.IsNullOrWhiteSpace(veza) ? r.DefaultVeza : veza;
+            }
+            else
+            {
+                r.Veza = r.DefaultVeza;
+                r.Napomena = "Komponenta nije učitana (lightweight)";
+            }
+
+            cache[key] = r;
+            return r;
+        }
+
+        /// <summary>Vrijednost propertyja: prvo iz konfiguracije, pa globalno.</summary>
+        public static string GetProp(ModelDoc2 m, string conf, string name)
+        {
+            if (m == null) return "";
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(conf))
+                {
+                    CustomPropertyManager cm = m.Extension.get_CustomPropertyManager(conf);
+                    if (cm != null)
+                    {
+                        cm.Get4(name, true, out string raw, out string res);
+                        string v = !string.IsNullOrWhiteSpace(res) ? res : raw;
+                        if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+                    }
+                }
+                CustomPropertyManager gm = m.Extension.get_CustomPropertyManager("");
+                if (gm != null)
+                {
+                    gm.Get4(name, true, out string raw2, out string res2);
+                    string v2 = !string.IsNullOrWhiteSpace(res2) ? res2 : raw2;
+                    return (v2 ?? "").Trim();
+                }
+            }
+            catch { }
+            return "";
+        }
+
+        /// <summary>Upis propertyja: globalno, a ako postoji i u konfiguraciji – i tamo.</summary>
+        public static void SetProp(ModelDoc2 m, string conf, string name, string value)
+        {
+            if (m == null) return;
+            value = value ?? "";
+            CustomPropertyManager gm = m.Extension.get_CustomPropertyManager("");
+            gm?.Add3(name, (int)swCustomInfoType_e.swCustomInfoText, value,
+                (int)swCustomPropertyAddOption_e.swCustomPropertyReplaceValue);
+
+            if (!string.IsNullOrWhiteSpace(conf))
+            {
+                try
+                {
+                    CustomPropertyManager cm = m.Extension.get_CustomPropertyManager(conf);
+                    if (cm != null)
+                    {
+                        cm.Get4(name, false, out string raw, out _);
+                        if (!string.IsNullOrEmpty(raw) || PropExists(cm, name))
+                            cm.Set2(name, value);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private static bool PropExists(CustomPropertyManager mgr, string name)
+        {
+            try
+            {
+                object names = null, types = null, values = null, resolved = null, links = null;
+                mgr.GetAll3(ref names, ref types, ref values, ref resolved, ref links);
+                if (names is Array arr)
+                    foreach (object n in arr)
+                        if (string.Equals(Convert.ToString(n), name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>Upisuje podatke reda u SolidWorks model.</summary>
+        public static void WriteRow(FasterpRow r)
+        {
+            if (r?.Model == null) return;
+            ModelDoc2 m = r.Model;
+            string conf = r.Configuration;
+            SetProp(m, conf, FasterpProps.Ident, r.Ident);
+            SetProp(m, conf, FasterpProps.Naziv, r.Naziv);
+            SetProp(m, conf, FasterpProps.Status, r.Tip);
+            SetProp(m, conf, FasterpProps.JedinicaMjere, r.JM);
+            SetProp(m, conf, FasterpProps.UpravljackiCentar, r.ZA);
+
+            // Veza se upisuje samo ako se razlikuje od podrazumijevane (sklop = fantom, dio = normalna) ili već postoji
+            bool hasVeza = !string.IsNullOrWhiteSpace(GetProp(m, conf, FasterpProps.Veza));
+            if (hasVeza || !string.Equals(r.Veza, r.DefaultVeza, StringComparison.OrdinalIgnoreCase))
+                SetProp(m, conf, FasterpProps.Veza, r.Veza);
+        }
+    }
+}

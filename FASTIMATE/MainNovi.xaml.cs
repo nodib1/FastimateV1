@@ -214,6 +214,24 @@ namespace FASTIMATE
         }
 
 
+        private FasterpWindow _fasterpWindow;
+
+        /// <summary>FASTERP – dostupno svim korisnicima, otvara se u zasebnom (većem) prozoru.</summary>
+        private void BtnFasterp_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fasterpWindow != null && _fasterpWindow.IsLoaded)
+            {
+                if (_fasterpWindow.WindowState == WindowState.Minimized)
+                    _fasterpWindow.WindowState = WindowState.Normal;
+                _fasterpWindow.Activate();
+                return;
+            }
+
+            _fasterpWindow = new FasterpWindow(PunoIme) { Owner = this };
+            _fasterpWindow.Closed += (s, a) => _fasterpWindow = null;
+            _fasterpWindow.Show();
+        }
+
         private void BtnFastimate_Click(object sender, RoutedEventArgs e)
         {
             PomocView.OpenHelpPdfSafely();
